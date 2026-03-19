@@ -1,0 +1,63 @@
+sample_rate_target = 44100
+
+[frontend]
+kind = "stft"
+win_length = 4096
+hop_length = 512
+nfft = 4096
+window = "hann"
+
+[whitening]
+method = "moving_average"
+domain = "logmag"
+span_bins = 31
+rectify_positive = true
+floor_eps = 1e-8
+
+[pitch]
+midi_min = 40
+midi_max = 88
+max_harmonics = 8
+harmonic_alpha = 0.8
+local_bandwidth_bins = 2
+local_aggregation = "max"
+use_subharmonic_penalty = true
+lambda_subharmonic = 0.15
+use_missing_penalty = false
+lambda_missing = 0.0
+
+[nms]
+threshold_mode = "relative"
+threshold_value = 0.30
+radius_midi_steps = 1
+max_polyphony = 6
+
+[templates]
+level = "string_region"
+num_harmonics = 8
+include_harmonic_ratios = true
+include_centroid = true
+include_rolloff = true
+include_flux = true
+include_attack_ratio = false
+include_noise_ratio = true
+include_inharmonicity = true
+score_type = "diag_mahalanobis"
+region_bounds = [0, 5, 10, 15, 21]
+
+[decode]
+lambda_conflict = 1000.0
+lambda_fret_spread = 0.1
+lambda_position_prior = 0.02
+max_candidates_per_pitch = 3
+max_global_solutions = 256
+
+[tracking]
+mode = "event"
+smooth_frames = 3
+lambda_switch_string = 0.2
+
+[optimization]
+search_strategy = "random"
+trials = 100
+seed = 12345
