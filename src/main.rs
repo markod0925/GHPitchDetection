@@ -1,6 +1,8 @@
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use guitar_pitch::audio::load_wav_mono;
+use guitar_pitch::cli_eval::run_eval_mono;
+use guitar_pitch::cli_train::run_train_templates;
 use guitar_pitch::config::load_app_config;
 use guitar_pitch::infer::run_pitch_only_inference;
 use std::io::{self, Write};
@@ -21,6 +23,26 @@ enum Command {
         #[arg(long)]
         audio: String,
     },
+    TrainTemplates {
+        #[arg(long)]
+        config: String,
+        #[arg(long)]
+        mono_dataset: String,
+        #[arg(long)]
+        out: String,
+        #[arg(long, default_value = "input")]
+        dataset_root: String,
+    },
+    EvalMono {
+        #[arg(long)]
+        config: String,
+        #[arg(long)]
+        mono_dataset: String,
+        #[arg(long)]
+        templates: String,
+        #[arg(long, default_value = "input")]
+        dataset_root: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -28,6 +50,18 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::InferPitch { config, audio } => run_infer_pitch(&config, &audio),
+        Command::TrainTemplates {
+            config,
+            mono_dataset,
+            out,
+            dataset_root,
+        } => run_train_templates(&config, &mono_dataset, &out, &dataset_root),
+        Command::EvalMono {
+            config,
+            mono_dataset,
+            templates,
+            dataset_root,
+        } => run_eval_mono(&config, &mono_dataset, &templates, &dataset_root),
     }
 }
 

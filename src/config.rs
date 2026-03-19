@@ -263,6 +263,24 @@ fn validate_config(cfg: &AppConfig) -> Result<()> {
     if cfg.nms.threshold_mode != "relative" && cfg.nms.threshold_mode != "absolute" {
         bail!("unsupported nms.threshold_mode: {}", cfg.nms.threshold_mode);
     }
+    if cfg.templates.level != "string"
+        && cfg.templates.level != "string_region"
+        && cfg.templates.level != "string_fret"
+    {
+        bail!("unsupported templates.level: {}", cfg.templates.level);
+    }
+    if cfg.templates.score_type != "diag_mahalanobis" && cfg.templates.score_type != "cosine" {
+        bail!(
+            "unsupported templates.score_type: {}",
+            cfg.templates.score_type
+        );
+    }
+    if cfg.templates.num_harmonics == 0 {
+        bail!("templates.num_harmonics must be > 0");
+    }
+    if cfg.templates.level == "string_region" && cfg.templates.region_bounds.len() < 2 {
+        bail!("templates.region_bounds must contain at least 2 bounds for string_region");
+    }
     Ok(())
 }
 
