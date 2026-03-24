@@ -190,15 +190,23 @@ pub fn train_templates_from_mono_dataset(
     })
 }
 
-pub fn score_diag_mahalanobis(z: &[f32], mean: &[f32], std: &[f32], eps: f32) -> f32 {
+pub fn score_diag_mahalanobis(
+    z: &[f32],
+    mean: &[f32],
+    std: &[f32],
+    eps: f32,
+    std_floor: f32,
+) -> f32 {
     if z.len() != mean.len() || z.len() != std.len() || z.is_empty() {
         return f32::NEG_INFINITY;
     }
     let eps = eps.max(1e-12);
+    let std_floor = std_floor.max(0.0);
     let mut score = 0.0_f32;
     for i in 0..z.len() {
         let d = z[i] - mean[i];
-        let denom = std[i] * std[i] + eps;
+        let sigma = std[i].max(std_floor);
+        let denom = sigma * sigma + eps;
         score -= d * d / denom;
     }
     score
@@ -226,6 +234,7 @@ pub fn score_string_fret_candidates(
     templates: &GuitarTemplates,
     cfg: &AppConfig,
 ) -> Vec<CandidatePosition> {
+    let eps = cfg.templates.scorer_epsilon.max(1e-12);
     let mut scored = Vec::new();
     for (string, fret) in midi_to_fret_positions(midi, &templates.open_midi, templates.fret_max) {
         if let Some(stats) = select_template_stats(templates, cfg, string, fret) {
@@ -233,23 +242,35 @@ pub fn score_string_fret_candidates(
                 continue;
             }
             let local_score = if cfg.templates.score_type == "cosine" {
-                score_cosine(z, &stats.mean, 1e-6)
+                score_cosine(z, &stats.mean, eps)
             } else {
-                score_diag_mahalanobis(z, &stats.mean, &stats.std, 1e-6)
+                score_diag_mahalanobis(
+                    z,
+                    &stats.mean,
+                    &stats.std,
+                    eps,
+                    cfg.templates.mahalanobis_std_floor,
+                )
             };
             scored.push(CandidatePosition {
                 midi,
                 string,
                 fret,
-                local_score,
+                pitch_score: 0.0,
+                template_score: local_score,
+                pitch_score_norm: 0.0,
+                template_score_norm: 0.0,
+                combined_score: local_score,
             });
         }
     }
 
     scored.sort_by(|a, b| {
-        b.local_score
-            .partial_cmp(&a.local_score)
+        b.combined_score
+            .partial_cmp(&a.combined_score)
             .unwrap_or(Ordering::Equal)
+            .then_with(|| a.string.cmp(&b.string))
+            .then_with(|| a.fret.cmp(&b.fret))
     });
     scored
 }
@@ -344,8 +365,8 @@ mod tests {
         let mean_diff = [3.0, 2.0, 1.0];
         let std = [0.5, 0.5, 0.5];
         assert!(
-            score_diag_mahalanobis(&z, &mean_same, &std, 1e-6)
-                > score_diag_mahalanobis(&z, &mean_diff, &std, 1e-6)
+            score_diag_mahalanobis(&z, &mean_same, &std, 1e-6, 0.0)
+                > score_diag_mahalanobis(&z, &mean_diff, &std, 1e-6, 0.0)
         );
         assert!(score_cosine(&z, &mean_same, 1e-6) > score_cosine(&z, &mean_diff, 1e-6));
     }
@@ -364,6 +385,10 @@ mod tests {
                 include_attack_ratio: false,
                 include_noise_ratio: false,
                 include_inharmonicity: false,
+                feature_normalization: "none".to_string(),
+                normalization_epsilon: 1e-6,
+                mahalanobis_std_floor: 1e-3,
+                scorer_epsilon: 1e-6,
                 region_bounds: vec![0, 5, 10],
             },
             ..AppConfig::default()
@@ -388,5 +413,15 @@ mod tests {
         assert!(!ranked.is_empty());
         assert_eq!(ranked[0].string, 5);
         assert_eq!(ranked[0].fret, 0);
+    }
+
+    #[test]
+    fn mahala_score_uses_std_floor() {
+        let z = [1.0_f32];
+        let mean = [0.0_f32];
+        let tiny_std = [0.0_f32];
+        let score_floor_0 = score_diag_mahalanobis(&z, &mean, &tiny_std, 1e-6, 0.0);
+        let score_floor_1 = score_diag_mahalanobis(&z, &mean, &tiny_std, 1e-6, 1.0);
+        assert!(score_floor_1 > score_floor_0);
     }
 }

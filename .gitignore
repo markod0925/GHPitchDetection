@@ -16,3 +16,5 @@ target/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 /input
+output/debug_phase1/tuning/stage_a_trials.csv
+output/debug_phase1/tuning/stage_a_trials.json

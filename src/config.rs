@@ -74,12 +74,19 @@ pub struct TemplateConfig {
     pub include_noise_ratio: bool,
     pub include_inharmonicity: bool,
     pub score_type: String,
+    pub feature_normalization: String,
+    pub normalization_epsilon: f32,
+    pub mahalanobis_std_floor: f32,
+    pub scorer_epsilon: f32,
     pub region_bounds: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DecodeConfig {
+    pub alpha: f32,
+    pub beta: f32,
+    pub normalization_epsilon: f32,
     pub lambda_conflict: f32,
     pub lambda_fret_spread: f32,
     pub lambda_position_prior: f32,
@@ -184,6 +191,10 @@ impl Default for TemplateConfig {
             include_noise_ratio: true,
             include_inharmonicity: true,
             score_type: "diag_mahalanobis".to_string(),
+            feature_normalization: "none".to_string(),
+            normalization_epsilon: 1e-6,
+            mahalanobis_std_floor: 1e-3,
+            scorer_epsilon: 1e-6,
             region_bounds: vec![0, 5, 10, 15, 21],
         }
     }
@@ -192,6 +203,9 @@ impl Default for TemplateConfig {
 impl Default for DecodeConfig {
     fn default() -> Self {
         Self {
+            alpha: 1.0,
+            beta: 1.0,
+            normalization_epsilon: 1e-6,
             lambda_conflict: 1000.0,
             lambda_fret_spread: 0.1,
             lambda_position_prior: 0.02,
@@ -230,7 +244,7 @@ pub fn load_app_config(path: &str) -> Result<AppConfig> {
 }
 
 fn validate_config(cfg: &AppConfig) -> Result<()> {
-    if cfg.frontend.kind != "stft" {
+    if cfg.frontend.kind != "stft" && cfg.frontend.kind != "qdft" {
         bail!("unsupported frontend.kind: {}", cfg.frontend.kind);
     }
     if cfg.frontend.window != "hann" {
@@ -275,11 +289,44 @@ fn validate_config(cfg: &AppConfig) -> Result<()> {
             cfg.templates.score_type
         );
     }
+    if cfg.templates.feature_normalization != "none"
+        && cfg.templates.feature_normalization != "l2"
+        && cfg.templates.feature_normalization != "zscore"
+    {
+        bail!(
+            "unsupported templates.feature_normalization: {}",
+            cfg.templates.feature_normalization
+        );
+    }
     if cfg.templates.num_harmonics == 0 {
         bail!("templates.num_harmonics must be > 0");
     }
+    if !cfg.templates.normalization_epsilon.is_finite()
+        || cfg.templates.normalization_epsilon <= 0.0
+    {
+        bail!("templates.normalization_epsilon must be > 0");
+    }
+    if !cfg.templates.mahalanobis_std_floor.is_finite() || cfg.templates.mahalanobis_std_floor < 0.0
+    {
+        bail!("templates.mahalanobis_std_floor must be >= 0");
+    }
+    if !cfg.templates.scorer_epsilon.is_finite() || cfg.templates.scorer_epsilon <= 0.0 {
+        bail!("templates.scorer_epsilon must be > 0");
+    }
     if cfg.templates.level == "string_region" && cfg.templates.region_bounds.len() < 2 {
         bail!("templates.region_bounds must contain at least 2 bounds for string_region");
+    }
+    if !cfg.decode.alpha.is_finite() || !cfg.decode.beta.is_finite() {
+        bail!("decode.alpha and decode.beta must be finite");
+    }
+    if !cfg.decode.normalization_epsilon.is_finite() || cfg.decode.normalization_epsilon <= 0.0 {
+        bail!("decode.normalization_epsilon must be > 0");
+    }
+    if cfg.decode.max_candidates_per_pitch == 0 {
+        bail!("decode.max_candidates_per_pitch must be > 0");
+    }
+    if cfg.decode.max_global_solutions == 0 {
+        bail!("decode.max_global_solutions must be > 0");
     }
     Ok(())
 }

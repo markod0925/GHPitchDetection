@@ -155,7 +155,44 @@ pub fn flatten_note_features(features: &NoteFeatures, cfg: &TemplateConfig) -> V
         out.push(features.inharmonicity);
     }
 
-    out
+    normalize_feature_vector(out, &cfg.feature_normalization, cfg.normalization_epsilon)
+}
+
+fn normalize_feature_vector(mut x: Vec<f32>, mode: &str, eps: f32) -> Vec<f32> {
+    match mode {
+        "l2" => {
+            let denom = x
+                .iter()
+                .map(|v| v * v)
+                .sum::<f32>()
+                .sqrt()
+                .max(eps.max(1e-12));
+            for value in &mut x {
+                *value /= denom;
+            }
+            x
+        }
+        "zscore" => {
+            if x.is_empty() {
+                return x;
+            }
+            let mean = x.iter().sum::<f32>() / x.len() as f32;
+            let var = x
+                .iter()
+                .map(|v| {
+                    let d = *v - mean;
+                    d * d
+                })
+                .sum::<f32>()
+                / x.len() as f32;
+            let std = var.sqrt().max(eps.max(1e-12));
+            for value in &mut x {
+                *value = (*value - mean) / std;
+            }
+            x
+        }
+        _ => x,
+    }
 }
 
 pub fn feature_names(cfg: &TemplateConfig) -> Vec<String> {
@@ -551,5 +588,40 @@ mod tests {
         assert!((f.harmonic_ratios[0] - 1.0).abs() < 1e-6);
         assert!((f.harmonic_ratios[1] - 2.0).abs() < 1e-6);
         assert!(f.flux > 0.0);
+    }
+
+    #[test]
+    fn flatten_applies_l2_normalization_when_enabled() {
+        let cfg = TemplateConfig {
+            num_harmonics: 2,
+            include_harmonic_ratios: false,
+            include_centroid: false,
+            include_rolloff: false,
+            include_flux: false,
+            include_attack_ratio: false,
+            include_noise_ratio: false,
+            include_inharmonicity: false,
+            feature_normalization: "l2".to_string(),
+            ..TemplateConfig::default()
+        };
+        let mut harmonic_amps = [0.0_f32; MAX_HARMONICS];
+        harmonic_amps[..2].copy_from_slice(&[3.0, 4.0]);
+        let f = NoteFeatures {
+            midi: 60,
+            f0_hz: 261.63,
+            harmonic_amps,
+            harmonic_ratios: [0.0_f32; MAX_HARMONICS],
+            centroid: 0.0,
+            rolloff: 0.0,
+            flux: 0.0,
+            attack_ratio: 0.0,
+            noise_ratio: 0.0,
+            inharmonicity: 0.0,
+        };
+
+        let z = flatten_note_features(&f, &cfg);
+        assert_eq!(z.len(), 2);
+        assert!((z[0] - 0.6).abs() < 1e-6);
+        assert!((z[1] - 0.8).abs() < 1e-6);
     }
 }

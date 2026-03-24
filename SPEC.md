@@ -275,6 +275,23 @@ The JAMS parser must be implemented as a dedicated preprocessing step, not embed
 
 The GuitarSet repository points to known annotation issues in its issue tracker, including incorrect timings in two annotations and a duplicated note in one MIDI annotation. The preprocessing pipeline must therefore support file-level blacklisting, patching, or override rules for problematic examples. ([GitHub][1])
 
+### Dataset naming convention (mono vs poly)
+
+In addition to structured annotations, filename conventions are used:
+
+- files containing `"solo"` in the filename correspond to **monophonic recordings**
+- files containing `"comp"` in the filename correspond to **polyphonic recordings (chords/companiment)**
+
+This convention must be respected by:
+- dataset loading utilities
+- evaluation pipelines
+- reporting
+
+Annotations are already split accordingly, but this naming rule must be preserved for:
+- debugging
+- filtering
+- validation
+
 ---
 
 ## 8. Dataset formats
@@ -556,7 +573,17 @@ pub struct CandidatePosition {
     pub midi: u8,
     pub string: u8,
     pub fret: u8,
-    pub local_score: f32,
+
+    // Raw scores
+    pub pitch_score: f32,
+    pub template_score: f32,
+
+    // Normalized scores
+    pub pitch_score_norm: f32,
+    pub template_score_norm: f32,
+
+    // Final combined score used in decoding
+    pub combined_score: f32,
 }
 ```
 
@@ -1035,18 +1062,23 @@ Multiple notes detected in the same frame may be assigned to the same string if 
 
 ### 22.2 Objective
 
-Choose one candidate per detected pitch maximizing:
+The decoder must maximize:
 
-[
-J = \sum_i s_i - \lambda_c C - \lambda_s S - \lambda_p P
-]
+\[
+J =
+\sum_i S_{\text{local},i}
+- \lambda_c C
+- \lambda_s S
+- \lambda_p P
+\]
 
 where:
+- \(S_{\text{local},i}\) is the combined score (pitch + template)
+- \(C\) is string conflict penalty
+- \(S\) is fret spread penalty
+- \(P\) is position prior penalty
 
-* (s_i): local template score
-* (C): string conflict penalty
-* (S): fret spread penalty
-* (P): position prior penalty
+The decoder must not ignore pitch scores when ranking solutions.
 
 ### 22.3 Penalties
 
@@ -1082,6 +1114,74 @@ This is feasible because:
 * max polyphony is small
 * candidate positions per pitch are small
 * top-K pruning reduces combinatorics sharply
+
+### Local candidate score composition
+
+Each `(midi, string, fret)` candidate must combine both:
+
+- pitch evidence (Phase 1)
+- template evidence (Phase 2)
+
+The decoder must NOT rely on template score alone.
+
+Each candidate must include:
+
+- raw pitch score
+- raw template score
+- normalized pitch score
+- normalized template score
+- combined score
+
+The combined local score is defined as:
+
+\[
+S_{\text{local},i} =
+\alpha \,\hat S_{\text{pitch},i} +
+\beta \,\hat S_{\text{template},i}
+\]
+
+where:
+- \(\hat S_{\text{pitch}}\) is a normalized pitch score
+- \(\hat S_{\text{template}}\) is a normalized template score
+- \(\alpha, \beta\) are configurable weights
+
+Default values:
+
+```toml
+alpha = 1.0
+beta = 1.0
+```
+
+### Score normalization
+
+Pitch and template scores may have different scales and must be normalized before combination.
+
+For the first implementation, use simple deterministic normalization:
+
+#### Pitch normalization (per frame/event)
+
+\[
+\hat S_{\text{pitch}} =
+\frac{S_{\text{pitch}} - S_{\min}}{S_{\max} - S_{\min} + \epsilon}
+\]
+
+computed over all pitch candidates in the same frame/event.
+
+#### Template normalization (per pitch)
+
+\[
+\hat S_{\text{template}} =
+\frac{S_{\text{template}} - S_{\min}}{S_{\max} - S_{\min} + \epsilon}
+\]
+
+computed over all `(string, fret)` candidates for the same pitch.
+
+Normalization must:
+- be deterministic
+- be applied consistently
+- be reported in diagnostics
+
+Alternative normalization methods may be added later.
 
 ---
 

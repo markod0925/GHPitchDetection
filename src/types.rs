@@ -85,12 +85,16 @@ pub struct NoteFeatures {
     pub inharmonicity: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandidatePosition {
     pub midi: u8,
     pub string: u8,
     pub fret: u8,
-    pub local_score: f32,
+    pub pitch_score: f32,
+    pub template_score: f32,
+    pub pitch_score_norm: f32,
+    pub template_score_norm: f32,
+    pub combined_score: f32,
 }
 
 #[derive(Debug, Clone)]
