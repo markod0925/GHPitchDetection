@@ -1,0 +1,126 @@
+{
+  "audio_path": "/mnt/c/Dati/Marco/GameDev/GHPitchDetection/input/guitarset/audio/00_Jazz1-130-D_comp_mic.wav",
+  "feature_meta": {
+    "feature_summary": {
+      "dtype": "float32",
+      "max": 0.9827422499656677,
+      "mean": 0.3802127242088318,
+      "min": 0.0,
+      "shape": [
+        6,
+        144,
+        130
+      ],
+      "size": 112320,
+      "type": "ndarray"
+    },
+    "hop_length": 512,
+    "sample_rate": 22050,
+    "times_summary": {
+      "dtype": "float64",
+      "max": 2.995374149659864,
+      "mean": 1.497687074829932,
+      "min": 0.0,
+      "shape": [
+        130
+      ],
+      "size": 130,
+      "type": "ndarray"
+    }
+  },
+  "feature_summary": {
+    "dtype": "float32",
+    "max": 0.9827422499656677,
+    "mean": 0.3733578026294708,
+    "min": 0.0,
+    "shape": [
+      1,
+      130,
+      6,
+      144,
+      9
+    ]
+  },
+  "hcqt_config": {
+    "bins_per_octave": 36,
+    "fmin_note": "E2",
+    "harmonics": [
+      0.5,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "hop_length": 512,
+    "n_bins": 144,
+    "sample_rate": 22050
+  },
+  "max_frames": 130,
+  "model_path": "/mnt/c/Dati/Marco/GameDev/GHPitchDetection/tools/FretNetRust/guitar-transcription-continuous/model/model-2000.pt",
+  "notes": [
+    "Fixture generated from a real GuitarSet wave.",
+    "Features are the ONNX-ready tensor returned by model.pre_proc(...), not raw HCQT stack.",
+    "Reference outputs come from the original PyTorch model on CPU."
+  ],
+  "npz_path": "/mnt/c/Dati/Marco/GameDev/GHPitchDetection/tools/FretNetRust/fretnet_runtime/assets/test_features/00_Jazz1-130-D_comp_mic_f130.npz",
+  "outputs": {
+    "onsets": {
+      "dtype": "float32",
+      "max": 2.800015926361084,
+      "mean": -19.3212833404541,
+      "min": -42.812835693359375,
+      "shape": [
+        1,
+        130,
+        120
+      ]
+    },
+    "tablature": {
+      "dtype": "float32",
+      "max": 15.847402572631836,
+      "mean": -16.563148498535156,
+      "min": -35.57096862792969,
+      "shape": [
+        1,
+        130,
+        126
+      ]
+    },
+    "tablature_rel": {
+      "dtype": "float32",
+      "max": 0.9282233715057373,
+      "mean": 0.00471384497359395,
+      "min": -0.24548719823360443,
+      "shape": [
+        1,
+        130,
+        120
+      ]
+    }
+  },
+  "profile": {
+    "available": true,
+    "get_midi_tuning": {
+      "dtype": "int64",
+      "shape": [
+        6
+      ],
+      "type": "ndarray"
+    },
+    "get_num_dofs": 6,
+    "high": 83,
+    "low": 40,
+    "num_pitches": 20,
+    "tuning": [
+      "E2",
+      "A2",
+      "D3",
+      "G3",
+      "B3",
+      "E4"
+    ],
+    "type": "amt_tools.tools.instrument.GuitarProfile"
+  },
+  "python_output_type": "builtins.dict"
+}

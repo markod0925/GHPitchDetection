@@ -13,6 +13,7 @@ use crate::fretboard::fret_region;
 use crate::full_eval::{FullAggregateMetrics, FullExampleDiagnostic, FullFailureCases};
 use crate::harmonic_map::build_harmonic_maps;
 use crate::infer::run_pitch_only_inference;
+use crate::masp::MaspValidationSummary;
 use crate::metrics::evaluate_string_predictions;
 use crate::stft::build_stft_plan;
 use crate::templates::{score_string_fret_candidates, GuitarTemplates};
@@ -883,6 +884,8 @@ pub fn build_html_report(debug_dir: &Path) -> Result<PathBuf> {
         read_json_optional(&debug_dir.join("phase3_full_examples.json"))?;
     let full_failures: Option<FullFailureCases> =
         read_json_optional(&debug_dir.join("phase3_failure_cases.json"))?;
+    let masp_summary: Option<MaspValidationSummary> =
+        read_json_optional(&debug_dir.join("masp_validation_summary.json"))?;
 
     let html = render_report_html(
         pitch_metrics.as_ref(),
@@ -894,6 +897,7 @@ pub fn build_html_report(debug_dir: &Path) -> Result<PathBuf> {
         full_metrics.as_ref(),
         full_examples.as_deref().unwrap_or(&[]),
         full_failures.as_ref(),
+        masp_summary.as_ref(),
     );
 
     let index_path = report_dir.join("index.html");
@@ -1276,6 +1280,7 @@ fn render_report_html(
     full_metrics: Option<&FullAggregateMetrics>,
     full_examples: &[FullExampleDiagnostic],
     full_failures: Option<&FullFailureCases>,
+    masp_summary: Option<&MaspValidationSummary>,
 ) -> String {
     let mut html = String::new();
 
@@ -1312,7 +1317,7 @@ fn render_report_html(
 
     html.push_str("<div class=\"grid\">");
     html.push_str(
-        "<div class=\"card\"><h3>Artifacts</h3><p><a href=\"../phase1_pitch_metrics.json\">phase1_pitch_metrics.json</a></p><p><a href=\"../phase1_ab_comparison.json\">phase1_ab_comparison.json</a></p><p><a href=\"../phase1_pitch_metrics_qdft.json\">phase1_pitch_metrics_qdft.json</a></p><p><a href=\"../phase2_string_metrics.json\">phase2_string_metrics.json</a></p><p><a href=\"../phase2_confusion_matrix.csv\">phase2_confusion_matrix.csv</a></p><p><a href=\"../phase2_examples_topk.csv\">phase2_examples_topk.csv</a></p><p><a href=\"../phase3_full_metrics.json\">phase3_full_metrics.json</a></p><p><a href=\"../phase3_examples_topk.csv\">phase3_examples_topk.csv</a></p><p><a href=\"../tuning/report/index.html\">tuning/report/index.html</a></p></div>",
+        "<div class=\"card\"><h3>Artifacts</h3><p><a href=\"../phase1_pitch_metrics.json\">phase1_pitch_metrics.json</a></p><p><a href=\"../phase1_ab_comparison.json\">phase1_ab_comparison.json</a></p><p><a href=\"../phase1_pitch_metrics_qdft.json\">phase1_pitch_metrics_qdft.json</a></p><p><a href=\"../phase2_string_metrics.json\">phase2_string_metrics.json</a></p><p><a href=\"../phase2_confusion_matrix.csv\">phase2_confusion_matrix.csv</a></p><p><a href=\"../phase2_examples_topk.csv\">phase2_examples_topk.csv</a></p><p><a href=\"../phase3_full_metrics.json\">phase3_full_metrics.json</a></p><p><a href=\"../phase3_examples_topk.csv\">phase3_examples_topk.csv</a></p><p><a href=\"../masp_validation_summary.json\">masp_validation_summary.json</a></p><p><a href=\"../masp_validation_results.jsonl\">masp_validation_results.jsonl</a></p><p><a href=\"../tuning/report/index.html\">tuning/report/index.html</a></p></div>",
     );
 
     match pitch_metrics {
@@ -1447,6 +1452,44 @@ fn render_report_html(
         None => {
             html.push_str(
                 "<div class=\"card\"><h3>Poly Full Summary (Phase 3)</h3><p>Missing artifact <code>phase3_full_metrics.json</code>.</p></div>",
+            );
+        }
+    }
+
+    match masp_summary {
+        Some(summary) => {
+            html.push_str("<div class=\"card\"><h3>MASP Validation</h3>");
+            html.push_str(&format!(
+                "<div class=\"metric\"><span>Total windows</span><strong>{}</strong></div>",
+                summary.total
+            ));
+            html.push_str(&format!(
+                "<div class=\"metric\"><span>Passed</span><strong>{}</strong></div>",
+                summary.passed
+            ));
+            html.push_str(&format!(
+                "<div class=\"metric\"><span>Failed</span><strong>{}</strong></div>",
+                summary.failed
+            ));
+            html.push_str(&format!(
+                "<div class=\"metric\"><span>Pass rate</span><strong>{:.4}</strong></div>",
+                summary.pass_rate
+            ));
+            html.push_str(&format!(
+                "<div class=\"metric\"><span>False accept / reject</span><strong>{} / {}</strong></div>",
+                summary.false_accept_count, summary.false_reject_count
+            ));
+            if let Some(acc) = summary.accuracy {
+                html.push_str(&format!(
+                    "<div class=\"metric\"><span>Labeled accuracy</span><strong>{:.4}</strong></div>",
+                    acc
+                ));
+            }
+            html.push_str("</div>");
+        }
+        None => {
+            html.push_str(
+                "<div class=\"card\"><h3>MASP Validation</h3><p>Missing artifact <code>masp_validation_summary.json</code>.</p></div>",
             );
         }
     }

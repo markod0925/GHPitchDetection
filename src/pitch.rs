@@ -96,6 +96,7 @@ mod tests {
     #[test]
     fn weighted_score_prefers_fundamental_with_energy() {
         let cfg = PitchConfig {
+            backend: "legacy".to_string(),
             midi_min: 69,
             midi_max: 69,
             max_harmonics: 3,

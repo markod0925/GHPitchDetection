@@ -3,6 +3,7 @@ pub mod config;
 pub mod fretboard;
 pub mod harmonic_map;
 pub mod infer;
+pub mod masp;
 pub mod nms;
 pub mod pitch;
 pub mod stft;
@@ -23,6 +24,7 @@ pub mod tracking;
 // TODO(later): add evaluation and hyperparameter optimization modules.
 pub mod cli_eval;
 pub mod cli_infer;
+pub mod cli_masp;
 pub mod cli_optimize;
 pub mod cli_preprocess;
 pub mod cli_solo_string;

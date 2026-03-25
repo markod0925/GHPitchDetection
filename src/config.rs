@@ -10,6 +10,7 @@ pub struct AppConfig {
     pub frontend: FrontendConfig,
     pub whitening: WhiteningConfig,
     pub pitch: PitchConfig,
+    pub masp: MaspConfig,
     pub nms: NmsConfig,
     pub templates: TemplateConfig,
     pub decode: DecodeConfig,
@@ -40,6 +41,7 @@ pub struct WhiteningConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PitchConfig {
+    pub backend: String,
     pub midi_min: u8,
     pub midi_max: u8,
     pub max_harmonics: usize,
@@ -50,6 +52,31 @@ pub struct PitchConfig {
     pub lambda_subharmonic: f32,
     pub use_missing_penalty: bool,
     pub lambda_missing: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MaspConfig {
+    pub mode: String,
+    pub strict_sample_rate: u32,
+    pub bins_per_octave: usize,
+    pub max_harmonics: usize,
+    pub b_exponent: f32,
+    pub cent_tolerance: f32,
+    pub rms_window_ms: u32,
+    pub rms_h_relax: f32,
+    pub validation_score_threshold: f32,
+    pub pretrain_trials: usize,
+    pub weights: MaspWeightsConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MaspWeightsConfig {
+    pub har: f32,
+    pub mbw: f32,
+    pub cent: f32,
+    pub rms: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +144,7 @@ impl Default for AppConfig {
             frontend: FrontendConfig::default(),
             whitening: WhiteningConfig::default(),
             pitch: PitchConfig::default(),
+            masp: MaspConfig::default(),
             nms: NmsConfig::default(),
             templates: TemplateConfig::default(),
             decode: DecodeConfig::default(),
@@ -153,6 +181,7 @@ impl Default for WhiteningConfig {
 impl Default for PitchConfig {
     fn default() -> Self {
         Self {
+            backend: "legacy".to_string(),
             midi_min: 40,
             midi_max: 88,
             max_harmonics: 8,
@@ -163,6 +192,35 @@ impl Default for PitchConfig {
             lambda_subharmonic: 0.15,
             use_missing_penalty: false,
             lambda_missing: 0.0,
+        }
+    }
+}
+
+impl Default for MaspConfig {
+    fn default() -> Self {
+        Self {
+            mode: "strict".to_string(),
+            strict_sample_rate: 22_050,
+            bins_per_octave: 36,
+            max_harmonics: 8,
+            b_exponent: 0.25,
+            cent_tolerance: 50.0,
+            rms_window_ms: 50,
+            rms_h_relax: 0.25,
+            validation_score_threshold: 0.50,
+            pretrain_trials: 64,
+            weights: MaspWeightsConfig::default(),
+        }
+    }
+}
+
+impl Default for MaspWeightsConfig {
+    fn default() -> Self {
+        Self {
+            har: 0.40,
+            mbw: 0.25,
+            cent: 0.25,
+            rms: 0.10,
         }
     }
 }
@@ -265,6 +323,9 @@ fn validate_config(cfg: &AppConfig) -> Result<()> {
     if cfg.pitch.midi_min > cfg.pitch.midi_max {
         bail!("pitch.midi_min must be <= pitch.midi_max");
     }
+    if cfg.pitch.backend != "legacy" && cfg.pitch.backend != "masp" {
+        bail!("unsupported pitch.backend: {}", cfg.pitch.backend);
+    }
     if cfg.pitch.max_harmonics == 0 {
         bail!("pitch.max_harmonics must be > 0");
     }
@@ -273,6 +334,46 @@ fn validate_config(cfg: &AppConfig) -> Result<()> {
             "unsupported pitch.local_aggregation: {}",
             cfg.pitch.local_aggregation
         );
+    }
+    if cfg.masp.mode != "strict" && cfg.masp.mode != "compat" {
+        bail!("unsupported masp.mode: {}", cfg.masp.mode);
+    }
+    if cfg.masp.strict_sample_rate != 22_050 && cfg.masp.strict_sample_rate != 16_000 {
+        bail!(
+            "masp.strict_sample_rate must be 22050 or 16000 (got {})",
+            cfg.masp.strict_sample_rate
+        );
+    }
+    if cfg.masp.bins_per_octave == 0 {
+        bail!("masp.bins_per_octave must be > 0");
+    }
+    if cfg.masp.max_harmonics == 0 {
+        bail!("masp.max_harmonics must be > 0");
+    }
+    if !cfg.masp.b_exponent.is_finite() || cfg.masp.b_exponent < 0.0 {
+        bail!("masp.b_exponent must be finite and >= 0");
+    }
+    if !cfg.masp.cent_tolerance.is_finite() || cfg.masp.cent_tolerance <= 0.0 {
+        bail!("masp.cent_tolerance must be > 0");
+    }
+    if cfg.masp.rms_window_ms == 0 {
+        bail!("masp.rms_window_ms must be > 0");
+    }
+    if !cfg.masp.rms_h_relax.is_finite() || cfg.masp.rms_h_relax < 0.0 {
+        bail!("masp.rms_h_relax must be >= 0");
+    }
+    if !cfg.masp.validation_score_threshold.is_finite() {
+        bail!("masp.validation_score_threshold must be finite");
+    }
+    if cfg.masp.pretrain_trials == 0 {
+        bail!("masp.pretrain_trials must be > 0");
+    }
+    if !cfg.masp.weights.har.is_finite()
+        || !cfg.masp.weights.mbw.is_finite()
+        || !cfg.masp.weights.cent.is_finite()
+        || !cfg.masp.weights.rms.is_finite()
+    {
+        bail!("masp.weights values must be finite");
     }
     if cfg.nms.threshold_mode != "relative" && cfg.nms.threshold_mode != "absolute" {
         bail!("unsupported nms.threshold_mode: {}", cfg.nms.threshold_mode);

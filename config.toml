@@ -15,6 +15,7 @@ rectify_positive = true
 floor_eps = 1e-8
 
 [pitch]
+backend = "legacy"
 midi_min = 40
 midi_max = 88
 max_harmonics = 8
@@ -25,6 +26,24 @@ use_subharmonic_penalty = true
 lambda_subharmonic = 0.15
 use_missing_penalty = false
 lambda_missing = 0.0
+
+[masp]
+mode = "strict"
+strict_sample_rate = 22050
+bins_per_octave = 36
+max_harmonics = 8
+b_exponent = 0.25
+cent_tolerance = 50.0
+rms_window_ms = 50
+rms_h_relax = 0.25
+validation_score_threshold = 0.50
+pretrain_trials = 64
+
+[masp.weights]
+har = 0.40
+mbw = 0.25
+cent = 0.25
+rms = 0.10
 
 [nms]
 threshold_mode = "relative"

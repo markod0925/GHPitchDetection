@@ -5,6 +5,7 @@ use serde::Serialize;
 use crate::config::AppConfig;
 use crate::fretboard::pitch_to_hz;
 use crate::harmonic_map::build_harmonic_maps;
+use crate::masp::score_pitch_frames_masp;
 use crate::nms::select_pitch_candidates;
 use crate::pitch::{harmonic_weights, score_pitch_frame};
 use crate::stft::{build_stft_plan, compute_stft_frames, StftPlan};
@@ -24,6 +25,22 @@ pub struct PitchFrameInference {
 }
 
 pub fn run_pitch_only_inference(audio: &AudioBuffer, cfg: &AppConfig) -> Vec<PitchFrameInference> {
+    if cfg.pitch.backend == "masp" {
+        let scored_frames = score_pitch_frames_masp(audio, cfg);
+        let mut out = Vec::with_capacity(scored_frames.len());
+        for scored in scored_frames {
+            let notes = select_pitch_candidates(&scored.midi_scores, cfg.pitch.midi_min, &cfg.nms)
+                .into_iter()
+                .map(|(midi, score)| PitchCandidate { midi, score })
+                .collect();
+            out.push(PitchFrameInference {
+                time_sec: scored.time_sec,
+                notes,
+            });
+        }
+        return out;
+    }
+
     let stft_plan = build_stft_plan(&cfg.frontend);
     let mut frames =
         compute_phase1_frontend_frames(&audio.samples, audio.sample_rate, &stft_plan, cfg);

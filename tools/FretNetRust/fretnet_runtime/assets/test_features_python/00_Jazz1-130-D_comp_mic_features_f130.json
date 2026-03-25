@@ -1,0 +1,98 @@
+{
+  "audio_path": "/mnt/c/Dati/Marco/GameDev/GHPitchDetection/input/guitarset/audio/00_Jazz1-130-D_comp_mic.wav",
+  "audio_summary": {
+    "dtype": "float32",
+    "max": 13.052326202392578,
+    "mean": -0.001197422156110406,
+    "min": -16.52222442626953,
+    "shape": [
+      488346
+    ]
+  },
+  "axis_semantics": {
+    "audio": [
+      "samples"
+    ],
+    "hcqt": [
+      "harmonics",
+      "freq_bins",
+      "frames"
+    ],
+    "times": [
+      "frames"
+    ]
+  },
+  "feature_meta": {
+    "feature_summary": {
+      "dtype": "float32",
+      "max": 0.9827422499656677,
+      "mean": 0.3802127242088318,
+      "min": 0.0,
+      "shape": [
+        6,
+        144,
+        130
+      ],
+      "size": 112320,
+      "type": "ndarray"
+    },
+    "hop_length": 512,
+    "sample_rate": 22050,
+    "times_summary": {
+      "dtype": "float64",
+      "max": 2.995374149659864,
+      "mean": 1.497687074829932,
+      "min": 0.0,
+      "shape": [
+        130
+      ],
+      "size": 130,
+      "type": "ndarray"
+    }
+  },
+  "hcqt_config": {
+    "bins_per_octave": 36,
+    "fmin_note": "E2",
+    "harmonics": [
+      0.5,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "hop_length": 512,
+    "n_bins": 144,
+    "sample_rate": 22050
+  },
+  "hcqt_summary": {
+    "dtype": "float32",
+    "max": 0.9827422499656677,
+    "mean": 0.3802126944065094,
+    "min": 0.0,
+    "shape": [
+      6,
+      144,
+      130
+    ]
+  },
+  "load_resample_type": "kaiser_best",
+  "max_frames": 130,
+  "normalization": "rms_norm",
+  "notes": [
+    "Audio is mono, normalized, and resampled exactly by the canonical Python loader.",
+    "HCQT comes from amt_tools.features.HCQT with repository configuration.",
+    "The fixture stores raw HCQT, not the model input window tensor."
+  ],
+  "npz_path": "/mnt/c/Dati/Marco/GameDev/GHPitchDetection/tools/FretNetRust/fretnet_runtime/assets/test_features_python/00_Jazz1-130-D_comp_mic_features_f130.npz",
+  "sample_rate": 22050,
+  "times_summary": {
+    "dtype": "float32",
+    "max": 2.9953742027282715,
+    "mean": 1.4976871013641357,
+    "min": 0.0,
+    "shape": [
+      130
+    ]
+  }
+}

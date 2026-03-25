@@ -1,0 +1,691 @@
+{
+  "audio": {
+    "audio_path": "../../../input/guitarset/audio/00_BN1-129-Eb_comp_mic.wav",
+    "mode": "real_audio",
+    "sample_rate": 22050,
+    "samples": 492253
+  },
+  "hcqt": {
+    "config": {
+      "bins_per_octave": 36,
+      "fmin_note": "E2",
+      "harmonics": [
+        0.5,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "hop_length": 512,
+      "n_bins": 144,
+      "sample_rate": 22050
+    },
+    "summary": {
+      "feature_summary": {
+        "dtype": "float32",
+        "max": 0.9726874828338623,
+        "mean": 0.2942923903465271,
+        "min": 0.0,
+        "shape": [
+          6,
+          144,
+          130
+        ],
+        "size": 112320,
+        "type": "ndarray"
+      },
+      "hop_length": 512,
+      "sample_rate": 22050,
+      "times_summary": {
+        "dtype": "float64",
+        "max": 2.995374149659864,
+        "mean": 1.497687074829932,
+        "min": 0.0,
+        "shape": [
+          130
+        ],
+        "size": 130,
+        "type": "ndarray"
+      }
+    }
+  },
+  "model_path": "/mnt/c/Dati/Marco/GameDev/GHPitchDetection/tools/FretNetRust/guitar-transcription-continuous/model/model-2000.pt",
+  "plot_path": null,
+  "prediction_keys": [
+    "multi_pitch",
+    "notes",
+    "offsets",
+    "onsets",
+    "pitch_list",
+    "tablature",
+    "tablature_rel",
+    "times"
+  ],
+  "predictions": {
+    "multi_pitch": {
+      "dtype": "float64",
+      "max": 1.0,
+      "mean": 0.009061771561771561,
+      "min": 0.0,
+      "shape": [
+        6,
+        44,
+        130
+      ],
+      "size": 34320,
+      "type": "ndarray"
+    },
+    "notes": {
+      "0": {
+        "head": [
+          {
+            "dtype": "float64",
+            "shape": [
+              0
+            ],
+            "size": 0,
+            "type": "ndarray"
+          },
+          {
+            "dtype": "float64",
+            "shape": [
+              0,
+              2
+            ],
+            "size": 0,
+            "type": "ndarray"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "1": {
+        "head": [
+          {
+            "dtype": "float64",
+            "max": 51.0,
+            "mean": 51.0,
+            "min": 51.0,
+            "shape": [
+              2
+            ],
+            "size": 2,
+            "type": "ndarray"
+          },
+          {
+            "dtype": "float64",
+            "max": 3.018594264984131,
+            "mean": 2.618049919605255,
+            "min": 2.321995496749878,
+            "shape": [
+              2,
+              2
+            ],
+            "size": 4,
+            "type": "ndarray"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "2": {
+        "head": [
+          {
+            "dtype": "float64",
+            "shape": [
+              0
+            ],
+            "size": 0,
+            "type": "ndarray"
+          },
+          {
+            "dtype": "float64",
+            "shape": [
+              0,
+              2
+            ],
+            "size": 0,
+            "type": "ndarray"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "3": {
+        "head": [
+          {
+            "dtype": "float64",
+            "max": 62.0,
+            "mean": 62.0,
+            "min": 62.0,
+            "shape": [
+              3
+            ],
+            "size": 3,
+            "type": "ndarray"
+          },
+          {
+            "dtype": "float64",
+            "max": 3.018594264984131,
+            "mean": 2.163325786590576,
+            "min": 1.160997748374939,
+            "shape": [
+              3,
+              2
+            ],
+            "size": 6,
+            "type": "ndarray"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "4": {
+        "head": [
+          {
+            "dtype": "float64",
+            "max": 67.0,
+            "mean": 66.0,
+            "min": 65.0,
+            "shape": [
+              4
+            ],
+            "size": 4,
+            "type": "ndarray"
+          },
+          {
+            "dtype": "float64",
+            "max": 3.018594264984131,
+            "mean": 1.5470295026898384,
+            "min": 0.04643990844488144,
+            "shape": [
+              4,
+              2
+            ],
+            "size": 8,
+            "type": "ndarray"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "5": {
+        "head": [
+          {
+            "dtype": "float64",
+            "shape": [
+              0
+            ],
+            "size": 0,
+            "type": "ndarray"
+          },
+          {
+            "dtype": "float64",
+            "shape": [
+              0,
+              2
+            ],
+            "size": 0,
+            "type": "ndarray"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      }
+    },
+    "offsets": {
+      "dtype": "float64",
+      "max": 1.0,
+      "mean": 0.0004662004662004662,
+      "min": 0.0,
+      "shape": [
+        6,
+        44,
+        130
+      ],
+      "size": 34320,
+      "type": "ndarray"
+    },
+    "onsets": {
+      "dtype": "float32",
+      "max": 1.0,
+      "mean": 0.00034965036320500076,
+      "min": 0.0,
+      "shape": [
+        6,
+        44,
+        130
+      ],
+      "size": 34320,
+      "type": "ndarray"
+    },
+    "pitch_list": {
+      "0": {
+        "head": [
+          {
+            "dtype": "float32",
+            "max": 2.9953742027282715,
+            "mean": 1.4976871013641357,
+            "min": 0.0,
+            "shape": [
+              130
+            ],
+            "size": 130,
+            "type": "ndarray"
+          },
+          {
+            "head": [
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              }
+            ],
+            "len": 130,
+            "type": "list"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "1": {
+        "head": [
+          {
+            "dtype": "float32",
+            "max": 2.9953742027282715,
+            "mean": 1.4976871013641357,
+            "min": 0.0,
+            "shape": [
+              130
+            ],
+            "size": 130,
+            "type": "ndarray"
+          },
+          {
+            "head": [
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "max": 51.017364501953125,
+                "mean": 51.017364501953125,
+                "min": 51.017364501953125,
+                "shape": [
+                  1
+                ],
+                "size": 1,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "max": 51.005775451660156,
+                "mean": 51.005775451660156,
+                "min": 51.005775451660156,
+                "shape": [
+                  1
+                ],
+                "size": 1,
+                "type": "ndarray"
+              }
+            ],
+            "len": 130,
+            "type": "list"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "2": {
+        "head": [
+          {
+            "dtype": "float32",
+            "max": 2.9953742027282715,
+            "mean": 1.4976871013641357,
+            "min": 0.0,
+            "shape": [
+              130
+            ],
+            "size": 130,
+            "type": "ndarray"
+          },
+          {
+            "head": [
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "max": 58.07760238647461,
+                "mean": 58.07760238647461,
+                "min": 58.07760238647461,
+                "shape": [
+                  1
+                ],
+                "size": 1,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              }
+            ],
+            "len": 130,
+            "type": "list"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "3": {
+        "head": [
+          {
+            "dtype": "float32",
+            "max": 2.9953742027282715,
+            "mean": 1.4976871013641357,
+            "min": 0.0,
+            "shape": [
+              130
+            ],
+            "size": 130,
+            "type": "ndarray"
+          },
+          {
+            "head": [
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "max": 62.09652757644653,
+                "mean": 62.09652757644653,
+                "min": 62.09652757644653,
+                "shape": [
+                  1
+                ],
+                "size": 1,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              }
+            ],
+            "len": 130,
+            "type": "list"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "4": {
+        "head": [
+          {
+            "dtype": "float32",
+            "max": 2.9953742027282715,
+            "mean": 1.4976871013641357,
+            "min": 0.0,
+            "shape": [
+              130
+            ],
+            "size": 130,
+            "type": "ndarray"
+          },
+          {
+            "head": [
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              }
+            ],
+            "len": 130,
+            "type": "list"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      },
+      "5": {
+        "head": [
+          {
+            "dtype": "float32",
+            "max": 2.9953742027282715,
+            "mean": 1.4976871013641357,
+            "min": 0.0,
+            "shape": [
+              130
+            ],
+            "size": 130,
+            "type": "ndarray"
+          },
+          {
+            "head": [
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              },
+              {
+                "dtype": "float64",
+                "shape": [
+                  0
+                ],
+                "size": 0,
+                "type": "ndarray"
+              }
+            ],
+            "len": 130,
+            "type": "list"
+          }
+        ],
+        "len": 2,
+        "type": "tuple"
+      }
+    },
+    "tablature": {
+      "dtype": "int64",
+      "max": 8.0,
+      "mean": 2.1474358974358974,
+      "min": -1.0,
+      "shape": [
+        6,
+        130
+      ],
+      "size": 780,
+      "type": "ndarray"
+    },
+    "tablature_rel": {
+      "dtype": "float32",
+      "max": 0.1686185598373413,
+      "mean": 0.00137381162494421,
+      "min": -0.060921669006347656,
+      "shape": [
+        120,
+        130
+      ],
+      "size": 15600,
+      "type": "ndarray"
+    },
+    "times": {
+      "dtype": "float32",
+      "max": 2.9953742027282715,
+      "mean": 1.4976871013641357,
+      "min": 0.0,
+      "shape": [
+        130
+      ],
+      "size": 130,
+      "type": "ndarray"
+    }
+  }
+}

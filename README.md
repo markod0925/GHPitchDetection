@@ -18,6 +18,50 @@ guitar_pitch preprocess-jams \
 
 The fret extraction follows the GuitarSet visualization helper logic (`tablaturize_jams`): for each string track `s`, `fret = round(midi - open_midi[s])`.
 
+Pretrain MASP signatures and tune both the MASP `b_exponent` and the validation-rule weights from SOLO/COMP GuitarSet-derived annotations:
+
+```bash
+guitar_pitch pretrain-masp \
+  --config config.toml \
+  --mono-dataset input/guitarset/derived/mono_annotations.jsonl \
+  --comp-dataset input/guitarset/derived/comp_annotations.jsonl \
+  --dataset-root input \
+  --out-dir output/debug
+```
+
+Validate one expected note/chord window with MASP:
+
+```bash
+guitar_pitch validate-masp \
+  --config config.toml \
+  --artifacts-dir output/debug \
+  --audio input/guitarset/audio/00_BN1-129-Eb_comp_mic.wav \
+  --start-sec 1.0 \
+  --end-sec 1.3 \
+  --expected-midis 51,58,63
+```
+
+Validate MASP from a time-aligned tablature and a moving playhead:
+
+```bash
+guitar_pitch validate-masp-playhead \
+  --config config.toml \
+  --artifacts-dir output/debug \
+  --audio input/guitarset/audio/00_BN1-129-Eb_comp_mic.wav \
+  --tablature input/example_tab.json \
+  --playhead-sec 1.24
+```
+
+Batch MASP validation from JSONL requests:
+
+```bash
+guitar_pitch validate-masp-batch \
+  --config config.toml \
+  --artifacts-dir output/debug \
+  --requests-jsonl input/guitarset/derived/masp_requests.jsonl \
+  --out-dir output/debug
+```
+
 Train templates first (existing Phase 2 flow):
 
 ```bash
@@ -124,11 +168,41 @@ Main outputs are written under `output/debug/`:
 - `phase2_per_file.csv`
 - `phase2_mono_scores/<example>.json`
 - `phase2_error_highlights.json`
+- `masp_manifest.json`
+- `masp_note_signatures.jsonl`
+- `masp_joint_signatures.jsonl`
+- `masp_validation_results.jsonl`
+- `masp_validation_summary.json`
 - `report/index.html`
 - `solo_string_<string>_spectrogram_report/index.html`
 - `solo_string_<string>_spectrogram_report/figures/*.svg`
 
 ## Metric Notes
+
+- `masp_manifest.json` now separates MASP backend settings (`model_params`) from the final pass/fail rule (`validation_rule`).
+- `validation_rule.score_weights` and `validation_rule.score_threshold` affect only the final validation decision; they do not change MASP spectrum construction.
+- `validate-masp-playhead` resolves the active tablature event at the given playhead and then calls the same MASP backend using the derived `expected_midis`, `start_sec`, and `end_sec`.
+- `ts/masp/maspCore.ts` is the TypeScript-portable MASP core for GuitarHelio integration. It mirrors the current Rust formulas and embeds the tuned parameters:
+  - `bExponent = 0.7726795`
+  - `scoreThreshold = 0.4370982`
+  - `scoreWeights.har = 0.16453995`
+  - `scoreWeights.mbw = 0.5508079`
+  - `scoreWeights.cent = 0.038484424`
+  - `scoreWeights.rms = 0.24616772`
+- `ts/masp/checkConsistency.mjs` must be run with Node v22 and validates the TypeScript module against the shared fixture file `ts/masp/consistencyFixtures.json`.
+- Rust unit tests read that same fixture file through `include_str!`, so the Rust and TypeScript implementations are checked against one identical source of truth.
+- Tablature runtime input is a JSON array or JSONL of timed note events:
+
+```json
+[
+  { "string": 1, "fret": 3, "onset_sec": 1.00, "offset_sec": 1.30 },
+  { "string": 2, "fret": 0, "onset_sec": 1.02, "offset_sec": 1.28 },
+  { "string": 3, "fret": 0, "onset_sec": 1.01, "offset_sec": 1.25 }
+]
+```
+
+- `midi` is optional in tablature input; if omitted, it is derived from `(string, fret)` using standard guitar tuning.
+- If multiple overlapping notes exist on the same string at the playhead, the runtime resolver keeps the most recent one on that string.
 
 - Pitch precision/recall/F1 is computed event-wise using one representative frame per annotated note event (midpoint frame in the note segment).
 - False positives are predicted pitches not present in ground truth for the evaluated event.

@@ -74,6 +74,54 @@ pub fn normalize_audio_in_place(samples: &mut [f32]) {
     }
 }
 
+pub fn rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    let mut sum_sq = 0.0_f64;
+    for &x in samples {
+        let xf = x as f64;
+        sum_sq += xf * xf;
+    }
+    (sum_sq / samples.len() as f64).sqrt() as f32
+}
+
+pub fn normalize_audio_rms_in_place(samples: &mut [f32], target_rms: f32) -> f32 {
+    let current = rms(samples);
+    if current <= 0.0 || !current.is_finite() || target_rms <= 0.0 || !target_rms.is_finite() {
+        return current;
+    }
+    let gain = target_rms / current;
+    for x in samples.iter_mut() {
+        *x *= gain;
+    }
+    current
+}
+
+pub fn resample_linear(samples: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
+    if samples.is_empty() || src_rate == 0 || dst_rate == 0 {
+        return Vec::new();
+    }
+    if src_rate == dst_rate {
+        return samples.to_vec();
+    }
+
+    let ratio = dst_rate as f64 / src_rate as f64;
+    let out_len = ((samples.len() as f64) * ratio).round().max(1.0) as usize;
+    let mut out = vec![0.0_f32; out_len];
+    let inv_ratio = src_rate as f64 / dst_rate as f64;
+
+    for (i, dst) in out.iter_mut().enumerate() {
+        let src_pos = i as f64 * inv_ratio;
+        let src_i = src_pos.floor() as usize;
+        let frac = (src_pos - src_i as f64) as f32;
+        let x0 = samples[src_i.min(samples.len() - 1)];
+        let x1 = samples[(src_i + 1).min(samples.len() - 1)];
+        *dst = x0 + (x1 - x0) * frac;
+    }
+    out
+}
+
 pub fn trim_audio_region(
     samples: &[f32],
     sample_rate: u32,
@@ -102,7 +150,10 @@ pub fn trim_audio_region(
 mod tests {
     use std::path::PathBuf;
 
-    use super::{load_wav_mono, normalize_audio_in_place, trim_audio_region};
+    use super::{
+        load_wav_mono, normalize_audio_in_place, normalize_audio_rms_in_place, resample_linear,
+        rms, trim_audio_region,
+    };
 
     fn temp_path(filename: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
@@ -154,5 +205,22 @@ mod tests {
         assert!(audio.samples[1].abs() < 1e-6);
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rms_normalization_hits_target() {
+        let mut x = vec![0.5_f32, -0.5, 0.25, -0.25];
+        normalize_audio_rms_in_place(&mut x, 0.2);
+        let out_rms = rms(&x);
+        assert!((out_rms - 0.2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn linear_resample_changes_length() {
+        let x = vec![0.0_f32, 1.0, 0.0, -1.0, 0.0];
+        let y = resample_linear(&x, 10, 20);
+        assert!(y.len() > x.len());
+        let z = resample_linear(&x, 10, 5);
+        assert!(z.len() < x.len());
     }
 }

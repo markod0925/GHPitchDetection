@@ -1,0 +1,208 @@
+{
+  "params": {
+    "mode": "strict",
+    "strictSampleRate": 22050,
+    "binsPerOctave": 36,
+    "maxHarmonics": 8,
+    "bExponent": 0.7726795,
+    "centTolerance": 50,
+    "rmsWindowMs": 50,
+    "rmsHRelax": 0.25,
+    "scoreThreshold": 0.4370982,
+    "scoreWeights": {
+      "har": 0.16453995,
+      "mbw": 0.5508079,
+      "cent": 0.038484424,
+      "rms": 0.24616772
+    },
+    "localAggregation": "max",
+    "midiMin": 40
+  },
+  "smoothingFactor": [
+    {
+      "k": 1,
+      "bExponent": 0.7726795,
+      "expected": 0.5
+    },
+    {
+      "k": 4,
+      "bExponent": 0.7726795,
+      "expected": 0.2551823123443109
+    },
+    {
+      "k": 8,
+      "bExponent": 0.7726795,
+      "expected": 0.1670414562763001
+    }
+  ],
+  "centScore": [
+    {
+      "centError": 0,
+      "tolerance": 50,
+      "expected": 1
+    },
+    {
+      "centError": 25,
+      "tolerance": 50,
+      "expected": 0.5
+    },
+    {
+      "centError": 120,
+      "tolerance": 50,
+      "expected": 0
+    }
+  ],
+  "frameScoring": {
+    "mag": [
+      0.2,
+      0.5,
+      0.8,
+      0.4,
+      0.3,
+      0.9,
+      0.6
+    ],
+    "maps": [
+      {
+        "midi": 40,
+        "ranges": [
+          {
+            "start": 0,
+            "end": 1
+          },
+          {
+            "start": 2,
+            "end": 3
+          },
+          {
+            "start": 4,
+            "end": 5
+          }
+        ]
+      },
+      {
+        "midi": 41,
+        "ranges": [
+          {
+            "start": 1,
+            "end": 2
+          },
+          {
+            "start": 3,
+            "end": 4
+          },
+          {
+            "start": 5,
+            "end": 6
+          }
+        ]
+      },
+      {
+        "midi": 42,
+        "ranges": [
+          {
+            "start": 0,
+            "end": 0
+          },
+          {
+            "start": 2,
+            "end": 2
+          },
+          {
+            "start": 6,
+            "end": 6
+          }
+        ]
+      }
+    ],
+    "midiMin": 40,
+    "sampleRate": 22050,
+    "nfft": 4096,
+    "expectedMidis": [
+      41,
+      42
+    ],
+    "pitchSpectrum": [
+      0.1796030641990114,
+      0.17726922462202566,
+      0.12634506430683082
+    ],
+    "metrics": {
+      "h": 0.19091356208957203,
+      "har": 0.6283182649868841,
+      "mbw": 0.6027119482657358,
+      "centError": -100,
+      "noiseRms": 0.12
+    },
+    "weightedMetricsScore": 0.6519895520341873,
+    "validationDecision": {
+      "centGate": false,
+      "hGate": false,
+      "hDynamicThreshold": 1.6975,
+      "weightedScore": 0.6519895520341873,
+      "pass": true,
+      "reason": "validated_soft_score_without_cent_or_h_gate"
+    }
+  },
+  "playheadResolution": {
+    "playheadSec": 1.25,
+    "events": [
+      {
+        "string": 0,
+        "fret": 3,
+        "onsetSec": 1,
+        "offsetSec": 1.4
+      },
+      {
+        "string": 1,
+        "fret": 2,
+        "onsetSec": 1.02,
+        "offsetSec": 1.35
+      },
+      {
+        "string": 1,
+        "fret": 5,
+        "onsetSec": 1.2,
+        "offsetSec": 1.5
+      },
+      {
+        "string": 2,
+        "fret": 0,
+        "onsetSec": 1.01,
+        "offsetSec": 1.3
+      }
+    ],
+    "resolved": {
+      "playheadSec": 1.25,
+      "startSec": 1,
+      "endSec": 1.5,
+      "expectedMidis": [
+        43,
+        50
+      ],
+      "notes": [
+        {
+          "string": 0,
+          "fret": 3,
+          "onsetSec": 1,
+          "offsetSec": 1.4,
+          "midi": 43
+        },
+        {
+          "string": 1,
+          "fret": 5,
+          "onsetSec": 1.2,
+          "offsetSec": 1.5,
+          "midi": 50
+        },
+        {
+          "string": 2,
+          "fret": 0,
+          "onsetSec": 1.01,
+          "offsetSec": 1.3,
+          "midi": 50
+        }
+      ]
+    }
+  }
+}

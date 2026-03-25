@@ -5,6 +5,9 @@ use guitar_pitch::cli_eval::{
     run_build_report, run_eval_full, run_eval_full_report, run_eval_mono, run_eval_mono_report,
     run_eval_pitch_report, run_report, run_solo_string_spectrogram_report,
 };
+use guitar_pitch::cli_masp::{
+    run_pretrain_masp, run_validate_masp, run_validate_masp_batch, run_validate_masp_playhead,
+};
 use guitar_pitch::cli_optimize::{
     run_optimize_all, run_optimize_phase1, run_optimize_phase3, run_report_tuning,
 };
@@ -59,6 +62,64 @@ enum Command {
         out_comp: String,
         #[arg(long, default_value_t = 20)]
         fret_max: u8,
+    },
+    PretrainMasp {
+        #[arg(long)]
+        config: String,
+        #[arg(long, default_value = "input/guitarset/derived/mono_annotations.jsonl")]
+        mono_dataset: String,
+        #[arg(long, default_value = "input/guitarset/derived/comp_annotations.jsonl")]
+        comp_dataset: String,
+        #[arg(long, default_value = "input")]
+        dataset_root: String,
+        #[arg(long, default_value = DEFAULT_DEBUG_DIR)]
+        out_dir: String,
+        #[arg(long)]
+        trials: Option<usize>,
+        #[arg(long, default_value_t = 0.99)]
+        target_mono_recall: f32,
+        #[arg(long, default_value_t = 0.70)]
+        target_comp_recall: f32,
+    },
+    ValidateMasp {
+        #[arg(long)]
+        config: String,
+        #[arg(long)]
+        artifacts_dir: String,
+        #[arg(long)]
+        audio: String,
+        #[arg(long)]
+        start_sec: f32,
+        #[arg(long)]
+        end_sec: f32,
+        #[arg(long, value_delimiter = ',')]
+        expected_midis: Vec<u8>,
+        #[arg(long)]
+        out_json: Option<String>,
+    },
+    ValidateMaspBatch {
+        #[arg(long)]
+        config: String,
+        #[arg(long)]
+        artifacts_dir: String,
+        #[arg(long)]
+        requests_jsonl: String,
+        #[arg(long, default_value = DEFAULT_DEBUG_DIR)]
+        out_dir: String,
+    },
+    ValidateMaspPlayhead {
+        #[arg(long)]
+        config: String,
+        #[arg(long)]
+        artifacts_dir: String,
+        #[arg(long)]
+        audio: String,
+        #[arg(long)]
+        tablature: String,
+        #[arg(long)]
+        playhead_sec: f32,
+        #[arg(long)]
+        out_json: Option<String>,
     },
     EvalMono {
         #[arg(long)]
@@ -348,6 +409,63 @@ fn main() -> Result<()> {
             &out_comp,
             fret_max,
         ),
+        Command::PretrainMasp {
+            config,
+            mono_dataset,
+            comp_dataset,
+            dataset_root,
+            out_dir,
+            trials,
+            target_mono_recall,
+            target_comp_recall,
+        } => run_pretrain_masp(
+            &config,
+            &mono_dataset,
+            &comp_dataset,
+            &dataset_root,
+            &out_dir,
+            trials,
+            target_mono_recall,
+            target_comp_recall,
+        ),
+        Command::ValidateMasp {
+            config,
+            artifacts_dir,
+            audio,
+            start_sec,
+            end_sec,
+            expected_midis,
+            out_json,
+        } => run_validate_masp(
+            &config,
+            &artifacts_dir,
+            &audio,
+            start_sec,
+            end_sec,
+            &expected_midis,
+            out_json.as_deref(),
+        ),
+        Command::ValidateMaspBatch {
+            config,
+            artifacts_dir,
+            requests_jsonl,
+            out_dir,
+        } => run_validate_masp_batch(&config, &artifacts_dir, &requests_jsonl, &out_dir),
+        Command::ValidateMaspPlayhead {
+            config,
+            artifacts_dir,
+            audio,
+            tablature,
+            playhead_sec,
+            out_json,
+        } => run_validate_masp_playhead(
+            &config,
+            &artifacts_dir,
+            &audio,
+            &tablature,
+            playhead_sec,
+            out_json.as_deref(),
+        ),
         Command::EvalMono {
             config,
             mono_dataset,
@@ -605,12 +723,21 @@ fn run_infer_pitch(config_path: &str, audio_path: &str) -> Result<()> {
     let cfg = load_app_config(config_path)?;
     let audio = load_wav_mono(audio_path)?;
 
-    if audio.sample_rate != cfg.sample_rate_target {
+    if cfg.pitch.backend != "masp" && audio.sample_rate != cfg.sample_rate_target {
         // TODO(phase-1.5): add high-quality resampling when sample rates do not match.
         bail!(
             "sample rate mismatch: file={}Hz config.sample_rate_target={}Hz",
             audio.sample_rate,
             cfg.sample_rate_target
+        );
+    }
+    if cfg.pitch.backend == "masp"
+        && cfg.masp.mode == "strict"
+        && audio.sample_rate > cfg.masp.strict_sample_rate
+    {
+        eprintln!(
+            "warning: MASP strict mode will downsample {}Hz -> {}Hz",
+            audio.sample_rate, cfg.masp.strict_sample_rate
         );
     }
 
