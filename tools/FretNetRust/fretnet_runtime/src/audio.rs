@@ -15,9 +15,28 @@ pub struct AudioBuffer {
 struct ResampyFilter {
     half_window: Vec<f64>,
     precision: usize,
+    half_rate: Option<HalfRateKernel>,
+}
+
+struct HalfRateKernel {
+    left_weights: Vec<f64>,
+    right_weights: Vec<f64>,
 }
 
 static KAISER_BEST_FILTER: OnceLock<Result<ResampyFilter, String>> = OnceLock::new();
+
+#[derive(Debug, Clone, Default)]
+pub struct ResampleProfile {
+    pub total_seconds: f64,
+    pub output_allocation_seconds: f64,
+    pub kernel_prepare_seconds: f64,
+    pub convolution_seconds: f64,
+    pub resize_seconds: f64,
+    pub output_samples: usize,
+    pub specialized_path: bool,
+    pub left_tap_count: usize,
+    pub right_tap_count: usize,
+}
 
 pub fn load_wav_mono(path: impl AsRef<Path>) -> Result<AudioBuffer, FrontendError> {
     let path = path.as_ref().to_path_buf();
@@ -99,6 +118,15 @@ pub fn resample_kaiser_best(
     original_sample_rate: u32,
     target_sample_rate: u32,
 ) -> Result<Vec<f32>, FrontendError> {
+    Ok(resample_kaiser_best_profiled(samples, original_sample_rate, target_sample_rate)?.0)
+}
+
+pub fn resample_kaiser_best_profiled(
+    samples: &[f32],
+    original_sample_rate: u32,
+    target_sample_rate: u32,
+) -> Result<(Vec<f32>, ResampleProfile), FrontendError> {
+    let total_start = std::time::Instant::now();
     if samples.is_empty() {
         return Err(FrontendError::InvalidAudio(
             "cannot resample empty audio".to_owned(),
@@ -106,7 +134,24 @@ pub fn resample_kaiser_best(
     }
 
     if original_sample_rate == target_sample_rate {
-        return Ok(samples.to_vec());
+        return Ok((
+            samples.to_vec(),
+            ResampleProfile {
+                total_seconds: total_start.elapsed().as_secs_f64(),
+                output_allocation_seconds: 0.0,
+                kernel_prepare_seconds: 0.0,
+                convolution_seconds: 0.0,
+                resize_seconds: 0.0,
+                output_samples: samples.len(),
+                specialized_path: false,
+                left_tap_count: 0,
+                right_tap_count: 0,
+            },
+        ));
+    }
+
+    if original_sample_rate == 2 && target_sample_rate == 1 {
+        return downsample_kaiser_best_by_2_profiled(samples);
     }
 
     let filter = load_kaiser_best_filter()?;
@@ -124,8 +169,11 @@ pub fn resample_kaiser_best(
     }
 
     let desired_len = ((samples.len() as f64) * sample_ratio).ceil() as usize;
+    let allocation_start = std::time::Instant::now();
     let mut output = vec![0.0f32; resampy_output_len];
+    let output_allocation_seconds = allocation_start.elapsed().as_secs_f64();
 
+    let kernel_prepare_start = std::time::Instant::now();
     let mut interp_win = filter.half_window.clone();
     if sample_ratio < 1.0 {
         for value in &mut interp_win {
@@ -138,6 +186,7 @@ pub fn resample_kaiser_best(
         interp_delta.push(values[1] - values[0]);
     }
     interp_delta.push(0.0);
+    let kernel_prepare_seconds = kernel_prepare_start.elapsed().as_secs_f64();
 
     let scale = sample_ratio.min(1.0);
     let num_table = filter.precision;
@@ -146,6 +195,7 @@ pub fn resample_kaiser_best(
     let nwin = interp_win.len();
     let n_orig = samples.len();
 
+    let convolution_start = std::time::Instant::now();
     for (t, value) in output.iter_mut().enumerate() {
         let time_register = t as f64 * time_increment;
         let n = time_register as usize;
@@ -179,14 +229,30 @@ pub fn resample_kaiser_best(
 
         *value = accumulator as f32;
     }
+    let convolution_seconds = convolution_start.elapsed().as_secs_f64();
 
+    let resize_start = std::time::Instant::now();
     if output.len() < desired_len {
         output.resize(desired_len, 0.0);
     } else if output.len() > desired_len {
         output.truncate(desired_len);
     }
+    let resize_seconds = resize_start.elapsed().as_secs_f64();
 
-    Ok(output)
+    Ok((
+        output,
+        ResampleProfile {
+            total_seconds: total_start.elapsed().as_secs_f64(),
+            output_allocation_seconds,
+            kernel_prepare_seconds,
+            convolution_seconds,
+            resize_seconds,
+            output_samples: desired_len,
+            specialized_path: false,
+            left_tap_count: 0,
+            right_tap_count: 0,
+        },
+    ))
 }
 
 pub fn load_audio_for_frontend(
@@ -218,9 +284,11 @@ fn load_kaiser_best_filter() -> Result<&'static ResampyFilter, FrontendError> {
             .by_name("precision.npy")
             .map_err(|err| err.to_string())?;
 
+        let precision = precision.into_scalar() as usize;
         Ok(ResampyFilter {
+            half_rate: build_half_rate_kernel(&half_window, precision),
             half_window: half_window.to_vec(),
-            precision: precision.into_scalar() as usize,
+            precision,
         })
     });
 
@@ -228,5 +296,100 @@ fn load_kaiser_best_filter() -> Result<&'static ResampyFilter, FrontendError> {
         FrontendError::ConfigMismatch(format!(
             "failed to load embedded kaiser_best resample filter: {message}"
         ))
+    })
+}
+
+pub fn downsample_kaiser_best_by_2_profiled(
+    samples: &[f32],
+) -> Result<(Vec<f32>, ResampleProfile), FrontendError> {
+    let total_start = std::time::Instant::now();
+    if samples.is_empty() {
+        return Err(FrontendError::InvalidAudio(
+            "cannot resample empty audio".to_owned(),
+        ));
+    }
+
+    let filter = load_kaiser_best_filter()?;
+    let Some(kernel) = &filter.half_rate else {
+        return resample_kaiser_best_profiled(samples, 2, 1);
+    };
+
+    let desired_len = (samples.len() as f64 / 2.0).ceil() as usize;
+    let computed_len = samples.len() / 2;
+
+    let allocation_start = std::time::Instant::now();
+    let mut output = vec![0.0f32; desired_len];
+    let output_allocation_seconds = allocation_start.elapsed().as_secs_f64();
+
+    let kernel_prepare_start = std::time::Instant::now();
+    let left_weights = &kernel.left_weights;
+    let right_weights = &kernel.right_weights;
+    let left_tap_count = left_weights.len();
+    let right_tap_count = right_weights.len();
+    let kernel_prepare_seconds = kernel_prepare_start.elapsed().as_secs_f64();
+
+    let convolution_start = std::time::Instant::now();
+    for (t, value) in output.iter_mut().take(computed_len).enumerate() {
+        let center = t * 2;
+        let mut accumulator = 0.0f64;
+
+        let left_limit = left_tap_count.min(center + 1);
+        for (tap_index, &weight) in left_weights.iter().take(left_limit).enumerate() {
+            accumulator += weight * samples[center - tap_index] as f64;
+        }
+
+        let right_available = samples.len().saturating_sub(center + 1);
+        let right_limit = right_tap_count.min(right_available);
+        for (tap_index, &weight) in right_weights.iter().take(right_limit).enumerate() {
+            accumulator += weight * samples[center + 1 + tap_index] as f64;
+        }
+
+        *value = accumulator as f32;
+    }
+    let convolution_seconds = convolution_start.elapsed().as_secs_f64();
+
+    Ok((
+        output,
+        ResampleProfile {
+            total_seconds: total_start.elapsed().as_secs_f64(),
+            output_allocation_seconds,
+            kernel_prepare_seconds,
+            convolution_seconds,
+            resize_seconds: 0.0,
+            output_samples: desired_len,
+            specialized_path: true,
+            left_tap_count,
+            right_tap_count,
+        },
+    ))
+}
+
+fn build_half_rate_kernel(half_window: &Array1<f64>, precision: usize) -> Option<HalfRateKernel> {
+    if precision == 0 || precision % 2 != 0 {
+        return None;
+    }
+
+    let index_step = precision / 2;
+    if index_step == 0 {
+        return None;
+    }
+
+    let mut left_weights = Vec::new();
+    let mut left_index = 0usize;
+    while left_index < half_window.len() {
+        left_weights.push(half_window[left_index] * 0.5);
+        left_index += index_step;
+    }
+
+    let mut right_weights = Vec::new();
+    let mut right_index = index_step;
+    while right_index < half_window.len() {
+        right_weights.push(half_window[right_index] * 0.5);
+        right_index += index_step;
+    }
+
+    Some(HalfRateKernel {
+        left_weights,
+        right_weights,
     })
 }

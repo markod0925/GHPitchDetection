@@ -33,8 +33,14 @@ struct AggregateSummary {
     frontend_mean_seconds: f64,
     slowest_harmonic: Option<f32>,
     slowest_harmonic_mean_seconds: f64,
+    slowest_octave: Option<usize>,
+    slowest_octave_mean_seconds: f64,
     average_hcqt_assembly_fraction: f64,
     average_batch_conversion_fraction: f64,
+    downsample_convolution_mean_seconds: f64,
+    downsample_scale_mean_seconds: f64,
+    downsample_allocation_mean_seconds: f64,
+    downsample_kernel_prepare_mean_seconds: f64,
     top_cost_centers: Vec<CostCenter>,
     internal_cost_centers: Vec<CostCenter>,
     repeated_setup_candidates: Vec<CostCenter>,
@@ -153,6 +159,8 @@ fn print_init_profile(profile: &FrontendInitProfile) {
     let mut filter_build_seconds = 0.0f64;
     let mut sparsify_seconds = 0.0f64;
     let mut fft_basis_bytes = 0usize;
+    let mut basis_nonzero_count = 0usize;
+    let mut basis_total_count = 0usize;
 
     for harmonic in &profile.harmonic_profiles {
         for octave in &harmonic.octave_profiles {
@@ -160,17 +168,20 @@ fn print_init_profile(profile: &FrontendInitProfile) {
             filter_build_seconds += octave.filter_build_seconds;
             sparsify_seconds += octave.sparsify_seconds;
             fft_basis_bytes += octave.fft_basis_bytes;
+            basis_nonzero_count += octave.basis_nonzero_count;
+            basis_total_count += octave.row_count * octave.positive_bins;
         }
     }
 
     println!("Extractor init:");
     println!("  total: {}", fmt_seconds(profile.total_seconds));
     println!(
-        "  init-only work: fft_plan={} filter_build={} sparsify={} fft_basis={}",
+        "  init-only work: fft_plan={} filter_build={} sparsify={} fft_basis={} active_basis={:.1}%",
         fmt_seconds(fft_plan_seconds),
         fmt_seconds(filter_build_seconds),
         fmt_seconds(sparsify_seconds),
-        fmt_bytes(fft_basis_bytes as f64)
+        fmt_bytes(fft_basis_bytes as f64),
+        safe_fraction(basis_nonzero_count as f64, basis_total_count as f64) * 100.0
     );
     println!("  note: basis construction and FFT planning occur only here, not during steady-state extract()");
 }
@@ -189,8 +200,32 @@ fn print_input_summary(display_name: &str, summary: &FrontendProfileBenchmarkSum
     println!("  HCQT shape: {:?}", summary.hcqt_shape);
     println!("  Batch shape: {:?}", summary.batch_shape);
     print_scalar("  Frontend total", &summary.frontend_total);
+    print_scalar("  Shared octave pyramid", &summary.octave_pyramid);
     print_scalar("  HCQT assembly", &summary.hcqt_assembly);
     print_scalar("  HCQT -> batch", &summary.batch_conversion);
+    println!(
+        "  Shared octave pyramid allocation: {}",
+        fmt_bytes(summary.octave_pyramid_allocation_bytes)
+    );
+    for octave in &summary.octave_pyramid_levels {
+        println!(
+            "    shared octave {}: hop={} input_samples={} output_samples={} total={} downsample={} conv={} kernel_prep={} alloc={} resize={} scale={} taps=({}, {}) specialized={}",
+            octave.octave_index,
+            octave.hop_length,
+            octave.input_samples,
+            octave.output_samples,
+            fmt_seconds(octave.total.mean_seconds),
+            fmt_seconds(octave.downsample.mean_seconds),
+            fmt_seconds(octave.convolution.mean_seconds),
+            fmt_seconds(octave.kernel_prepare.mean_seconds),
+            fmt_seconds(octave.output_allocation.mean_seconds),
+            fmt_seconds(octave.resize.mean_seconds),
+            fmt_seconds(octave.scale.mean_seconds),
+            octave.mean_left_tap_count.round() as usize,
+            octave.mean_right_tap_count.round() as usize,
+            octave.specialized_path
+        );
+    }
 
     for harmonic in &summary.harmonics {
         let fraction = safe_fraction(
@@ -214,16 +249,24 @@ fn print_input_summary(display_name: &str, summary: &FrontendProfileBenchmarkSum
         );
         for octave in &harmonic.octaves {
             println!(
-                "    octave {}: total={} transform={} fft={} dot={} copy={} alloc={} array={} downsample={} alloc_bytes={}",
+                "    octave {}: total={} transform={} fft={} dot={} loop_overhead={} lookup={} mac={} write={} copy={} alloc={} array={} downsample={} active_basis={:.1}% alloc_bytes={}",
                 octave.octave_index,
                 fmt_seconds(octave.total.mean_seconds),
                 fmt_seconds(octave.transform.mean_seconds),
                 fmt_seconds(octave.fft_execution.mean_seconds),
                 fmt_seconds(octave.dot_product.mean_seconds),
+                fmt_seconds(octave.dot_loop_overhead.mean_seconds),
+                fmt_seconds(octave.basis_lookup.mean_seconds),
+                fmt_seconds(octave.multiply_accumulate.mean_seconds),
+                fmt_seconds(octave.output_write.mean_seconds),
                 fmt_seconds(octave.frame_copy.mean_seconds),
                 fmt_seconds(octave.buffer_allocation.mean_seconds),
                 fmt_seconds(octave.array_materialization.mean_seconds),
                 fmt_seconds(octave.downsample.mean_seconds),
+                safe_fraction(
+                    octave.mean_active_basis_coefficients,
+                    octave.mean_basis_coefficients_total,
+                ) * 100.0,
                 fmt_bytes(octave.mean_buffer_allocation_bytes)
             );
         }
@@ -248,6 +291,16 @@ fn build_aggregate_summary(
         .map(|summary| {
             safe_fraction(
                 summary.hcqt_assembly.mean_seconds,
+                summary.frontend_total.mean_seconds,
+            )
+        })
+        .sum::<f64>()
+        / summaries.len() as f64;
+    let average_octave_pyramid_fraction = summaries
+        .iter()
+        .map(|summary| {
+            safe_fraction(
+                summary.octave_pyramid.mean_seconds,
                 summary.frontend_total.mean_seconds,
             )
         })
@@ -279,6 +332,27 @@ fn build_aggregate_summary(
         harmonic_means.push((harmonic, mean_seconds));
     }
     let slowest_harmonic = harmonic_means
+        .iter()
+        .max_by(|left, right| left.1.partial_cmp(&right.1).unwrap())
+        .copied();
+    let octave_count = summaries
+        .first()
+        .map(|summary| summary.octave_pyramid_levels.len())
+        .unwrap_or(0);
+    let mut octave_means = Vec::with_capacity(octave_count);
+    for octave_index in 0..octave_count {
+        let mean_seconds = summaries
+            .iter()
+            .map(|summary| {
+                summary.octave_pyramid_levels[octave_index]
+                    .total
+                    .mean_seconds
+            })
+            .sum::<f64>()
+            / summaries.len() as f64;
+        octave_means.push((octave_index, mean_seconds));
+    }
+    let slowest_octave = octave_means
         .iter()
         .max_by(|left, right| left.1.partial_cmp(&right.1).unwrap())
         .copied();
@@ -316,17 +390,50 @@ fn build_aggregate_summary(
     let mut internal_cost_centers = vec![
         CostCenter {
             name: "octave_downsample".to_owned(),
-            mean_seconds: mean_stage_total(
-                summaries,
-                |_, octave| octave.downsample.mean_seconds,
-                |_| 0.0,
-            ),
+            mean_seconds: summaries
+                .iter()
+                .map(|summary| summary.octave_pyramid.mean_seconds)
+                .sum::<f64>()
+                / summaries.len() as f64,
+            mean_fraction_of_frontend: average_octave_pyramid_fraction,
+        },
+        CostCenter {
+            name: "octave_downsample_convolution".to_owned(),
+            mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+                octave.convolution.mean_seconds
+            }),
             mean_fraction_of_frontend: safe_fraction(
-                mean_stage_total(
-                    summaries,
-                    |_, octave| octave.downsample.mean_seconds,
-                    |_| 0.0,
-                ),
+                total_over_pyramid_levels(summaries, |octave| octave.convolution.mean_seconds),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_downsample_scale".to_owned(),
+            mean_seconds: total_over_pyramid_levels(summaries, |octave| octave.scale.mean_seconds),
+            mean_fraction_of_frontend: safe_fraction(
+                total_over_pyramid_levels(summaries, |octave| octave.scale.mean_seconds),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_downsample_allocation".to_owned(),
+            mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+                octave.output_allocation.mean_seconds
+            }),
+            mean_fraction_of_frontend: safe_fraction(
+                total_over_pyramid_levels(summaries, |octave| {
+                    octave.output_allocation.mean_seconds
+                }),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_downsample_kernel_prepare".to_owned(),
+            mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+                octave.kernel_prepare.mean_seconds
+            }),
+            mean_fraction_of_frontend: safe_fraction(
+                total_over_pyramid_levels(summaries, |octave| octave.kernel_prepare.mean_seconds),
                 frontend_mean_seconds,
             ),
         },
@@ -341,6 +448,70 @@ fn build_aggregate_summary(
                 mean_stage_total(
                     summaries,
                     |_, octave| octave.dot_product.mean_seconds,
+                    |_| 0.0,
+                ),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_dot_loop_overhead".to_owned(),
+            mean_seconds: mean_stage_total(
+                summaries,
+                |_, octave| octave.dot_loop_overhead.mean_seconds,
+                |_| 0.0,
+            ),
+            mean_fraction_of_frontend: safe_fraction(
+                mean_stage_total(
+                    summaries,
+                    |_, octave| octave.dot_loop_overhead.mean_seconds,
+                    |_| 0.0,
+                ),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_mac".to_owned(),
+            mean_seconds: mean_stage_total(
+                summaries,
+                |_, octave| octave.multiply_accumulate.mean_seconds,
+                |_| 0.0,
+            ),
+            mean_fraction_of_frontend: safe_fraction(
+                mean_stage_total(
+                    summaries,
+                    |_, octave| octave.multiply_accumulate.mean_seconds,
+                    |_| 0.0,
+                ),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_basis_lookup".to_owned(),
+            mean_seconds: mean_stage_total(
+                summaries,
+                |_, octave| octave.basis_lookup.mean_seconds,
+                |_| 0.0,
+            ),
+            mean_fraction_of_frontend: safe_fraction(
+                mean_stage_total(
+                    summaries,
+                    |_, octave| octave.basis_lookup.mean_seconds,
+                    |_| 0.0,
+                ),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_output_write".to_owned(),
+            mean_seconds: mean_stage_total(
+                summaries,
+                |_, octave| octave.output_write.mean_seconds,
+                |_| 0.0,
+            ),
+            mean_fraction_of_frontend: safe_fraction(
+                mean_stage_total(
+                    summaries,
+                    |_, octave| octave.output_write.mean_seconds,
                     |_| 0.0,
                 ),
                 frontend_mean_seconds,
@@ -450,6 +621,28 @@ fn build_aggregate_summary(
                 frontend_mean_seconds,
             ),
         },
+        CostCenter {
+            name: "octave_pyramid_output_allocation".to_owned(),
+            mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+                octave.output_allocation.mean_seconds
+            }),
+            mean_fraction_of_frontend: safe_fraction(
+                total_over_pyramid_levels(summaries, |octave| {
+                    octave.output_allocation.mean_seconds
+                }),
+                frontend_mean_seconds,
+            ),
+        },
+        CostCenter {
+            name: "octave_pyramid_kernel_prepare".to_owned(),
+            mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+                octave.kernel_prepare.mean_seconds
+            }),
+            mean_fraction_of_frontend: safe_fraction(
+                total_over_pyramid_levels(summaries, |octave| octave.kernel_prepare.mean_seconds),
+                frontend_mean_seconds,
+            ),
+        },
     ];
 
     let mut fft_plan_seconds = 0.0f64;
@@ -470,8 +663,22 @@ fn build_aggregate_summary(
         frontend_mean_seconds,
         slowest_harmonic: slowest_harmonic.map(|value| value.0),
         slowest_harmonic_mean_seconds: slowest_harmonic.map(|value| value.1).unwrap_or(0.0),
+        slowest_octave: slowest_octave.map(|value| value.0),
+        slowest_octave_mean_seconds: slowest_octave.map(|value| value.1).unwrap_or(0.0),
         average_hcqt_assembly_fraction,
         average_batch_conversion_fraction,
+        downsample_convolution_mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+            octave.convolution.mean_seconds
+        }),
+        downsample_scale_mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+            octave.scale.mean_seconds
+        }),
+        downsample_allocation_mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+            octave.output_allocation.mean_seconds
+        }),
+        downsample_kernel_prepare_mean_seconds: total_over_pyramid_levels(summaries, |octave| {
+            octave.kernel_prepare.mean_seconds
+        }),
         top_cost_centers,
         internal_cost_centers,
         repeated_setup_candidates,
@@ -500,10 +707,30 @@ fn print_aggregate_summary(summary: &AggregateSummary) {
             fmt_seconds(summary.slowest_harmonic_mean_seconds)
         );
     }
+    if let Some(octave) = summary.slowest_octave {
+        println!(
+            "  Slowest shared octave on average: {} ({})",
+            octave,
+            fmt_seconds(summary.slowest_octave_mean_seconds)
+        );
+    }
     println!(
-        "  Average non-transform overhead: hcqt_assembly={:.1}% hcqt_to_batch={:.1}%",
+        "  Average non-transform overhead: octave_pyramid={:.1}% hcqt_assembly={:.1}% hcqt_to_batch={:.1}%",
+        summary
+            .internal_cost_centers
+            .iter()
+            .find(|cost| cost.name == "octave_downsample")
+            .map(|cost| cost.mean_fraction_of_frontend * 100.0)
+            .unwrap_or(0.0),
         summary.average_hcqt_assembly_fraction * 100.0,
         summary.average_batch_conversion_fraction * 100.0
+    );
+    println!(
+        "  Shared octave-pyramid breakdown: conv={} scale={} alloc={} kernel_prep={}",
+        fmt_seconds(summary.downsample_convolution_mean_seconds),
+        fmt_seconds(summary.downsample_scale_mean_seconds),
+        fmt_seconds(summary.downsample_allocation_mean_seconds),
+        fmt_seconds(summary.downsample_kernel_prepare_mean_seconds)
     );
     println!("  Top frontend cost centers:");
     for cost in &summary.top_cost_centers {
@@ -619,6 +846,26 @@ fn mean_over_octaves(
         0.0
     } else {
         values.iter().sum::<f64>() / values.len() as f64
+    }
+}
+
+fn total_over_pyramid_levels(
+    summaries: &[FrontendProfileBenchmarkSummary],
+    selector: impl Fn(&fretnet_runtime::FrontendOctavePyramidSummary) -> f64,
+) -> f64 {
+    let mut totals = Vec::new();
+    for summary in summaries {
+        let mut total = 0.0f64;
+        for octave in &summary.octave_pyramid_levels {
+            total += selector(octave);
+        }
+        totals.push(total);
+    }
+
+    if totals.is_empty() {
+        0.0
+    } else {
+        totals.iter().sum::<f64>() / totals.len() as f64
     }
 }
 

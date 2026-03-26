@@ -16,8 +16,9 @@ pub use crate::{
     benchmark::{
         benchmark_end_to_end_audio, benchmark_frontend_profile_audio, benchmark_runtime,
         BenchmarkSummary, EndToEndBenchmarkSummary, FrontendHarmonicProfileSummary,
-        FrontendOctaveProfileSummary, FrontendProfileBenchmarkSummary, OutputTensorSummary,
-        ScalarProfileSummary, StageLatencySummary,
+        FrontendOctaveProfileSummary, FrontendOctavePyramidSummary,
+        FrontendProfileBenchmarkSummary, OutputTensorSummary, ScalarProfileSummary,
+        StageLatencySummary,
     },
     config::{
         default_feature_fixture_paths, default_fixture_metadata_path, default_fixture_path,
@@ -37,7 +38,7 @@ pub use crate::{
     model::FretNetRuntime,
     profile::{
         FrontendInitProfile, FrontendRunProfile, HarmonicInitProfile, HarmonicRunProfile,
-        OctaveInitProfile, OctaveRunProfile,
+        OctaveInitProfile, OctavePyramidProfile, OctaveRunProfile,
     },
     types::{
         DecodedOutput, FeatureBatch, FrontendStageOutputs, HarmonicStageOutput, HcqtFeatures,

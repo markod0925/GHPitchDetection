@@ -239,13 +239,20 @@ cargo run --release --example benchmark_frontend_profile -- --iterations 10 --js
 This profiler uses the same real audio discovery path as the existing validation fixtures. It separates:
 
 - extractor initialization / basis construction
+- shared octave-audio pyramid construction
 - per-run frontend total
 - per-harmonic time
 - per-octave transform, FFT, dot-product, downsample, and materialization time
 - final HCQT assembly
 - HCQT-to-batch conversion
 
-Use it before optimization work to identify whether the frontend is dominated by downsampling, transform execution, repeated allocations, or other setup costs.
+The dot-product substage breakdown is sampled on a representative frame so the profiler can still expose traversal and MAC costs without dominating the steady-state runtime it is measuring. After the current optimization passes, the shared octave pyramid / downsample path is again the main frontend bottleneck.
+
+The frontend now builds the octave audio pyramid once per input and reuses it across harmonics. Use the profiler to identify the remaining dominant cost center before making further optimization changes.
+
+The transform application path now also reports basis density and dot-product sub-stages (`lookup`, `mac`, `write`). The current implementation packs sparse basis rows when that is cheaper than dense storage, which reduces transform time without changing frontend semantics.
+
+The octave-pyramid profiler now also breaks down downsampling into convolution, kernel setup, allocation, resize, and scale stages. The current implementation uses a specialized cached `2 -> 1` Kaiser-best path for octave recursion, which preserves frontend semantics while removing repeated per-octave filter preparation.
 
 Run the end-to-end Python-vs-Rust consistency benchmark on a small subset:
 

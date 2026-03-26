@@ -5,7 +5,7 @@ use num_complex::Complex32;
 use rustfft::{Fft, FftPlanner};
 
 use crate::{
-    audio::resample_kaiser_best,
+    audio::downsample_kaiser_best_by_2_profiled,
     config::{
         FRONTEND_BINS_PER_OCTAVE, FRONTEND_FMIN_HZ, FRONTEND_HARMONICS, FRONTEND_HOP_LENGTH,
         FRONTEND_N_BINS, FRONTEND_SAMPLE_RATE, FRONTEND_SPARSITY, FRONTEND_TOP_DB,
@@ -13,7 +13,7 @@ use crate::{
     error::FrontendError,
     profile::{
         FrontendInitProfile, FrontendRunProfile, HarmonicInitProfile, HarmonicRunProfile,
-        OctaveInitProfile, OctaveRunProfile,
+        OctaveInitProfile, OctavePyramidProfile, OctaveRunProfile,
     },
     types::{FrontendStageOutputs, HarmonicStageOutput, HcqtFeatures},
 };
@@ -52,14 +52,37 @@ struct OctaveBasis {
     n_fft: usize,
     positive_bins: usize,
     row_count: usize,
-    fft_basis: Vec<Complex32>,
+    storage: BasisStorage,
     fft: Arc<dyn Fft<f32>>,
+}
+
+enum BasisStorage {
+    Dense {
+        fft_basis: Vec<Complex32>,
+    },
+    Sparse {
+        row_offsets: Vec<usize>,
+        indices: Vec<usize>,
+        values: Vec<Complex32>,
+    },
 }
 
 struct HarmonicBasis {
     lengths: Vec<f32>,
     octave_slices: Vec<Range<usize>>,
     octaves: Vec<OctaveBasis>,
+}
+
+struct OctaveAudioLevel {
+    samples: Vec<f32>,
+    hop_length: usize,
+}
+
+struct OctaveAudioPyramid {
+    levels: Vec<OctaveAudioLevel>,
+    profile: Vec<OctavePyramidProfile>,
+    allocation_bytes: usize,
+    total_seconds: f64,
 }
 
 pub struct HcqtExtractor {
@@ -163,6 +186,8 @@ impl HcqtExtractor {
             return Err(FrontendError::InvalidAudio("audio is empty".to_owned()));
         }
 
+        let octave_pyramid =
+            build_octave_audio_pyramid(audio, self.config.hop_length, self.max_octave_count())?;
         let mut harmonics = Vec::with_capacity(self.harmonic_bases.len());
         let mut harmonic_profiles = Vec::with_capacity(self.harmonic_bases.len());
 
@@ -173,8 +198,7 @@ impl HcqtExtractor {
             .copied()
             .zip(self.harmonic_bases.iter())
         {
-            let (magnitude, mut profile) =
-                harmonic_response_recursive(audio, self.config.hop_length, basis)?;
+            let (magnitude, mut profile) = harmonic_response_recursive(&octave_pyramid, basis)?;
             let frame_count = magnitude.shape()[1];
             let flatten_start = Instant::now();
             let magnitudes = array2_to_vec(&magnitude);
@@ -231,6 +255,9 @@ impl HcqtExtractor {
             sample_rate: self.config.sample_rate,
             input_samples: audio.len(),
             total_seconds: elapsed_seconds(total_start),
+            octave_pyramid_seconds: octave_pyramid.total_seconds,
+            octave_pyramid_allocation_bytes: octave_pyramid.allocation_bytes,
+            octave_pyramid_profiles: octave_pyramid.profile,
             harmonic_profiles,
             hcqt_assembly_seconds: elapsed_seconds(assembly_start),
             hcqt_assembly_allocation_bytes: self.config.harmonics.len()
@@ -250,6 +277,14 @@ impl HcqtExtractor {
             },
             profile,
         ))
+    }
+
+    fn max_octave_count(&self) -> usize {
+        self.harmonic_bases
+            .iter()
+            .map(|basis| basis.octaves.len())
+            .max()
+            .unwrap_or(0)
     }
 }
 
@@ -342,6 +377,7 @@ fn build_octave_basis(
     let fft_plan_seconds = elapsed_seconds(fft_plan_start);
 
     let mut fft_basis = vec![Complex32::new(0.0, 0.0); frequencies.len() * positive_bins];
+    let mut row_nonzero_counts = vec![0usize; frequencies.len()];
     let mut filter_build_seconds = 0.0f64;
     let mut sparsify_seconds = 0.0f64;
     for (row, (&freq, &length)) in frequencies.iter().zip(lengths.iter()).enumerate() {
@@ -359,14 +395,39 @@ fn build_octave_basis(
         let sparsify_start = Instant::now();
         sparsify_row(row_slice, sparsity);
         sparsify_seconds += elapsed_seconds(sparsify_start);
+        row_nonzero_counts[row] = row_slice.iter().filter(|value| value.norm() > 0.0).count();
     }
+
+    let basis_nonzero_count = row_nonzero_counts.iter().sum::<usize>();
+    let average_row_nonzero = if row_nonzero_counts.is_empty() {
+        0.0
+    } else {
+        basis_nonzero_count as f64 / row_nonzero_counts.len() as f64
+    };
+    let max_row_nonzero = row_nonzero_counts.iter().copied().max().unwrap_or(0);
+    let dense_bytes = frequencies.len() * positive_bins * size_of::<Complex32>();
+    let sparse_bytes = basis_nonzero_count * (size_of::<usize>() + size_of::<Complex32>())
+        + (frequencies.len() + 1) * size_of::<usize>();
+    let (storage, basis_storage, fft_basis_bytes) = if sparse_bytes < dense_bytes {
+        (
+            pack_sparse_basis(&fft_basis, frequencies.len(), positive_bins),
+            "sparse".to_owned(),
+            sparse_bytes,
+        )
+    } else {
+        (
+            BasisStorage::Dense { fft_basis },
+            "dense".to_owned(),
+            dense_bytes,
+        )
+    };
 
     Ok((
         OctaveBasis {
             n_fft,
             positive_bins,
             row_count: lengths.len(),
-            fft_basis,
+            storage,
             fft,
         },
         OctaveInitProfile {
@@ -378,7 +439,11 @@ fn build_octave_basis(
             row_count: lengths.len(),
             n_fft,
             positive_bins,
-            fft_basis_bytes: frequencies.len() * positive_bins * size_of::<Complex32>(),
+            fft_basis_bytes,
+            basis_storage,
+            basis_nonzero_count,
+            average_row_nonzero,
+            max_row_nonzero,
             fft_plan_seconds,
             filter_build_seconds,
             sparsify_seconds,
@@ -502,6 +567,30 @@ fn sparsify_row(row: &mut [Complex32], quantile: f32) {
     }
 }
 
+fn pack_sparse_basis(fft_basis: &[Complex32], row_count: usize, row_stride: usize) -> BasisStorage {
+    let mut row_offsets = Vec::with_capacity(row_count + 1);
+    let mut indices = Vec::new();
+    let mut values = Vec::new();
+    row_offsets.push(0usize);
+
+    for row in 0..row_count {
+        let row_slice = &fft_basis[row * row_stride..(row + 1) * row_stride];
+        for (index, value) in row_slice.iter().copied().enumerate() {
+            if value.norm() > 0.0 {
+                indices.push(index);
+                values.push(value);
+            }
+        }
+        row_offsets.push(indices.len());
+    }
+
+    BasisStorage::Sparse {
+        row_offsets,
+        indices,
+        values,
+    }
+}
+
 fn harmonic_response(
     audio: &[f32],
     hop_length: usize,
@@ -524,37 +613,147 @@ fn harmonic_response(
     let mut frame_copy_seconds = 0.0f64;
     let mut fft_execution_seconds = 0.0f64;
     let mut dot_product_seconds = 0.0f64;
+    let profile_frame_index = frame_count / 2;
+    let mut sampled_basis_lookup_seconds = 0.0f64;
+    let mut sampled_multiply_accumulate_seconds = 0.0f64;
+    let mut sampled_output_write_seconds = 0.0f64;
+    let basis_coefficients_total_per_frame = basis.row_count * basis.positive_bins;
 
-    for frame_index in 0..frame_count {
-        let start = frame_index * hop_length;
-        let copy_start = Instant::now();
-        for (offset, value) in spectrum.iter_mut().enumerate() {
-            value.re = padded[start + offset];
-            value.im = 0.0;
-        }
-        frame_copy_seconds += elapsed_seconds(copy_start);
+    let active_basis_coefficients_per_frame = match &basis.storage {
+        BasisStorage::Dense { fft_basis } => {
+            for frame_index in 0..frame_count {
+                let start = frame_index * hop_length;
+                let copy_start = Instant::now();
+                for (offset, value) in spectrum.iter_mut().enumerate() {
+                    value.re = padded[start + offset];
+                    value.im = 0.0;
+                }
+                frame_copy_seconds += elapsed_seconds(copy_start);
 
-        let fft_start = Instant::now();
-        basis.fft.process(&mut spectrum);
-        fft_execution_seconds += elapsed_seconds(fft_start);
+                let fft_start = Instant::now();
+                basis.fft.process(&mut spectrum);
+                fft_execution_seconds += elapsed_seconds(fft_start);
 
-        let dot_start = Instant::now();
-        for row in 0..basis.row_count {
-            let basis_row =
-                &basis.fft_basis[row * basis.positive_bins..(row + 1) * basis.positive_bins];
-            let mut accumulator = Complex32::new(0.0, 0.0);
-            for (basis_value, spectrum_value) in basis_row
-                .iter()
-                .zip(spectrum.iter().take(basis.positive_bins))
-            {
-                accumulator += *basis_value * *spectrum_value;
+                let dot_start = Instant::now();
+                let spectrum_bins = &spectrum[..basis.positive_bins];
+                if frame_index == profile_frame_index {
+                    for row in 0..basis.row_count {
+                        let lookup_start = Instant::now();
+                        let basis_row =
+                            &fft_basis[row * basis.positive_bins..(row + 1) * basis.positive_bins];
+                        sampled_basis_lookup_seconds += elapsed_seconds(lookup_start);
+
+                        let mac_start = Instant::now();
+                        let mut accumulator = Complex32::new(0.0, 0.0);
+                        for (basis_value, spectrum_value) in
+                            basis_row.iter().zip(spectrum_bins.iter())
+                        {
+                            accumulator += *basis_value * *spectrum_value;
+                        }
+                        sampled_multiply_accumulate_seconds += elapsed_seconds(mac_start);
+
+                        let output_start = Instant::now();
+                        response[row * frame_count + frame_index] = accumulator.norm();
+                        sampled_output_write_seconds += elapsed_seconds(output_start);
+                    }
+                } else {
+                    for row in 0..basis.row_count {
+                        let basis_row =
+                            &fft_basis[row * basis.positive_bins..(row + 1) * basis.positive_bins];
+                        let mut accumulator = Complex32::new(0.0, 0.0);
+                        for (basis_value, spectrum_value) in
+                            basis_row.iter().zip(spectrum_bins.iter())
+                        {
+                            accumulator += *basis_value * *spectrum_value;
+                        }
+                        response[row * frame_count + frame_index] = accumulator.norm();
+                    }
+                }
+                dot_product_seconds += elapsed_seconds(dot_start);
             }
-
-            let magnitude = accumulator.norm();
-            response[row * frame_count + frame_index] = magnitude;
+            basis.row_count * basis.positive_bins
         }
-        dot_product_seconds += elapsed_seconds(dot_start);
+        BasisStorage::Sparse {
+            row_offsets,
+            indices,
+            values,
+        } => {
+            for frame_index in 0..frame_count {
+                let start = frame_index * hop_length;
+                let copy_start = Instant::now();
+                for (offset, value) in spectrum.iter_mut().enumerate() {
+                    value.re = padded[start + offset];
+                    value.im = 0.0;
+                }
+                frame_copy_seconds += elapsed_seconds(copy_start);
+
+                let fft_start = Instant::now();
+                basis.fft.process(&mut spectrum);
+                fft_execution_seconds += elapsed_seconds(fft_start);
+
+                let dot_start = Instant::now();
+                let spectrum_bins = &spectrum[..basis.positive_bins];
+                if frame_index == profile_frame_index {
+                    for row in 0..basis.row_count {
+                        let lookup_start = Instant::now();
+                        let row_start = row_offsets[row];
+                        let row_end = row_offsets[row + 1];
+                        sampled_basis_lookup_seconds += elapsed_seconds(lookup_start);
+
+                        let mac_start = Instant::now();
+                        let row_indices = &indices[row_start..row_end];
+                        let row_values = &values[row_start..row_end];
+                        let mut accumulator = Complex32::new(0.0, 0.0);
+                        for (&basis_index, &basis_value) in
+                            row_indices.iter().zip(row_values.iter())
+                        {
+                            accumulator += basis_value * spectrum_bins[basis_index];
+                        }
+                        sampled_multiply_accumulate_seconds += elapsed_seconds(mac_start);
+
+                        let output_start = Instant::now();
+                        response[row * frame_count + frame_index] = accumulator.norm();
+                        sampled_output_write_seconds += elapsed_seconds(output_start);
+                    }
+                } else {
+                    for row in 0..basis.row_count {
+                        let row_start = row_offsets[row];
+                        let row_end = row_offsets[row + 1];
+                        let row_indices = &indices[row_start..row_end];
+                        let row_values = &values[row_start..row_end];
+                        let mut accumulator = Complex32::new(0.0, 0.0);
+                        for (&basis_index, &basis_value) in
+                            row_indices.iter().zip(row_values.iter())
+                        {
+                            accumulator += basis_value * spectrum_bins[basis_index];
+                        }
+                        response[row * frame_count + frame_index] = accumulator.norm();
+                    }
+                }
+                dot_product_seconds += elapsed_seconds(dot_start);
+            }
+            *row_offsets.last().unwrap_or(&0)
+        }
+    };
+
+    let frame_scale = frame_count as f64;
+    let mut basis_lookup_seconds = sampled_basis_lookup_seconds * frame_scale;
+    let mut multiply_accumulate_seconds = sampled_multiply_accumulate_seconds * frame_scale;
+    let mut output_write_seconds = sampled_output_write_seconds * frame_scale;
+    let substage_sum = basis_lookup_seconds + multiply_accumulate_seconds + output_write_seconds;
+    if substage_sum > dot_product_seconds && substage_sum > 0.0 {
+        let rescale = dot_product_seconds / substage_sum;
+        basis_lookup_seconds *= rescale;
+        multiply_accumulate_seconds *= rescale;
+        output_write_seconds *= rescale;
     }
+    let dot_loop_overhead_seconds = (dot_product_seconds
+        - basis_lookup_seconds
+        - multiply_accumulate_seconds
+        - output_write_seconds)
+        .max(0.0);
+    let active_basis_coefficients = active_basis_coefficients_per_frame * frame_count;
+    let basis_coefficients_total = basis_coefficients_total_per_frame * frame_count;
 
     (
         response,
@@ -570,6 +769,12 @@ fn harmonic_response(
             frame_copy_seconds,
             fft_execution_seconds,
             dot_product_seconds,
+            dot_loop_overhead_seconds,
+            basis_lookup_seconds,
+            multiply_accumulate_seconds,
+            output_write_seconds,
+            active_basis_coefficients,
+            basis_coefficients_total,
             array_materialization_seconds: 0.0,
             downsample_seconds: 0.0,
             downsampled_samples: None,
@@ -578,48 +783,33 @@ fn harmonic_response(
 }
 
 fn harmonic_response_recursive(
-    audio: &[f32],
-    hop_length: usize,
+    octave_pyramid: &OctaveAudioPyramid,
     basis: &HarmonicBasis,
 ) -> Result<(Array2<f32>, HarmonicRunProfile), FrontendError> {
     let mut octave_responses = Vec::with_capacity(basis.octaves.len());
-    let clone_start = Instant::now();
-    let mut octave_audio = audio.to_vec();
-    let audio_clone_seconds = elapsed_seconds(clone_start);
-    let mut octave_hop = hop_length;
     let mut octave_profiles = Vec::with_capacity(basis.octaves.len());
-    let mut temporary_allocation_bytes = octave_audio.len() * size_of::<f32>();
+    let mut temporary_allocation_bytes = 0usize;
 
     for (octave_index, octave_basis) in basis.octaves.iter().enumerate() {
-        let (response, mut octave_profile) =
-            harmonic_response(&octave_audio, octave_hop, octave_basis, octave_index);
+        let octave_audio = octave_pyramid.levels.get(octave_index).ok_or_else(|| {
+            FrontendError::ShapeMismatch(format!("octave pyramid is missing level {octave_index}"))
+        })?;
+        let (response, mut octave_profile) = harmonic_response(
+            &octave_audio.samples,
+            octave_audio.hop_length,
+            octave_basis,
+            octave_index,
+        );
         temporary_allocation_bytes += octave_profile.buffer_allocation_bytes;
         let array_start = Instant::now();
         let response_array = magnitudes_to_array2(
-            &response,
+            response,
             octave_basis.row_count,
-            1 + octave_audio.len() / octave_hop,
+            1 + octave_audio.samples.len() / octave_audio.hop_length,
         )?;
         octave_profile.array_materialization_seconds = elapsed_seconds(array_start);
         temporary_allocation_bytes += response_array.len() * size_of::<f32>();
         octave_responses.push(response_array);
-
-        if octave_index + 1 < basis.octaves.len() && octave_hop % 2 == 0 {
-            octave_hop /= 2;
-            let downsample_start = Instant::now();
-            octave_audio = resample_kaiser_best(
-                &octave_audio,
-                OCTAVE_DOWNSAMPLE_ORIG_SR,
-                OCTAVE_DOWNSAMPLE_TARGET_SR,
-            )?;
-            octave_profile.downsample_seconds = elapsed_seconds(downsample_start);
-            octave_profile.downsampled_samples = Some(octave_audio.len());
-            let scale =
-                (OCTAVE_DOWNSAMPLE_ORIG_SR as f32 / OCTAVE_DOWNSAMPLE_TARGET_SR as f32).sqrt();
-            for sample in &mut octave_audio {
-                *sample *= scale;
-            }
-        }
 
         octave_profile.total_seconds = octave_profile.transform_seconds
             + octave_profile.array_materialization_seconds
@@ -645,7 +835,7 @@ fn harmonic_response_recursive(
         HarmonicRunProfile {
             harmonic: 0.0,
             total_seconds: 0.0,
-            audio_clone_seconds,
+            audio_clone_seconds: 0.0,
             trim_stack_seconds,
             normalization_seconds,
             flatten_seconds: 0.0,
@@ -654,6 +844,99 @@ fn harmonic_response_recursive(
             octave_profiles,
         },
     ))
+}
+
+fn build_octave_audio_pyramid(
+    audio: &[f32],
+    hop_length: usize,
+    octave_count: usize,
+) -> Result<OctaveAudioPyramid, FrontendError> {
+    let total_start = Instant::now();
+    if octave_count == 0 {
+        return Ok(OctaveAudioPyramid {
+            levels: Vec::new(),
+            profile: Vec::new(),
+            allocation_bytes: 0,
+            total_seconds: 0.0,
+        });
+    }
+
+    let mut levels = Vec::with_capacity(octave_count);
+    let mut profile = Vec::with_capacity(octave_count);
+    let base_samples = audio.to_vec();
+    let mut allocation_bytes = base_samples.len() * size_of::<f32>();
+    levels.push(OctaveAudioLevel {
+        samples: base_samples,
+        hop_length,
+    });
+    profile.push(OctavePyramidProfile {
+        octave_index: 0,
+        hop_length,
+        input_samples: audio.len(),
+        output_samples: audio.len(),
+        total_seconds: 0.0,
+        downsample_seconds: 0.0,
+        scale_seconds: 0.0,
+        output_allocation_seconds: 0.0,
+        kernel_prepare_seconds: 0.0,
+        convolution_seconds: 0.0,
+        resize_seconds: 0.0,
+        specialized_path: false,
+        left_tap_count: 0,
+        right_tap_count: 0,
+    });
+
+    for octave_index in 1..octave_count {
+        let previous_level = levels.last().ok_or_else(|| {
+            FrontendError::ShapeMismatch("octave pyramid lost its previous level".to_owned())
+        })?;
+        let next_hop = previous_level.hop_length / 2;
+        if next_hop == 0 {
+            return Err(FrontendError::ConfigMismatch(format!(
+                "hop_length became zero while building octave pyramid at octave {octave_index}"
+            )));
+        }
+
+        let (mut next_samples, downsample_profile) =
+            downsample_kaiser_best_by_2_profiled(&previous_level.samples)?;
+        let downsample_seconds = downsample_profile.total_seconds;
+
+        let scale_start = Instant::now();
+        let scale = (OCTAVE_DOWNSAMPLE_ORIG_SR as f32 / OCTAVE_DOWNSAMPLE_TARGET_SR as f32).sqrt();
+        for sample in &mut next_samples {
+            *sample *= scale;
+        }
+        let scale_seconds = elapsed_seconds(scale_start);
+
+        allocation_bytes += next_samples.len() * size_of::<f32>();
+        profile.push(OctavePyramidProfile {
+            octave_index,
+            hop_length: next_hop,
+            input_samples: previous_level.samples.len(),
+            output_samples: next_samples.len(),
+            total_seconds: downsample_seconds + scale_seconds,
+            downsample_seconds,
+            scale_seconds,
+            output_allocation_seconds: downsample_profile.output_allocation_seconds,
+            kernel_prepare_seconds: downsample_profile.kernel_prepare_seconds,
+            convolution_seconds: downsample_profile.convolution_seconds,
+            resize_seconds: downsample_profile.resize_seconds,
+            specialized_path: downsample_profile.specialized_path,
+            left_tap_count: downsample_profile.left_tap_count,
+            right_tap_count: downsample_profile.right_tap_count,
+        });
+        levels.push(OctaveAudioLevel {
+            samples: next_samples,
+            hop_length: next_hop,
+        });
+    }
+
+    Ok(OctaveAudioPyramid {
+        levels,
+        profile,
+        allocation_bytes,
+        total_seconds: elapsed_seconds(total_start),
+    })
 }
 
 fn trim_stack(
@@ -697,7 +980,7 @@ fn trim_stack(
 }
 
 fn magnitudes_to_array2(
-    magnitudes: &[f32],
+    magnitudes: Vec<f32>,
     n_bins: usize,
     frame_count: usize,
 ) -> Result<Array2<f32>, FrontendError> {
@@ -709,14 +992,11 @@ fn magnitudes_to_array2(
         )));
     }
 
-    let mut output = Array2::<f32>::zeros((n_bins, frame_count));
-    for bin in 0..n_bins {
-        for frame in 0..frame_count {
-            output[[bin, frame]] = magnitudes[bin * frame_count + frame];
-        }
-    }
-
-    Ok(output)
+    Array2::from_shape_vec((n_bins, frame_count), magnitudes).map_err(|error| {
+        FrontendError::ShapeMismatch(format!(
+            "failed to materialize harmonic magnitudes as ndarray: {error}"
+        ))
+    })
 }
 
 fn array2_to_vec(array: &Array2<f32>) -> Vec<f32> {

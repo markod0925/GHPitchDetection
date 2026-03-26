@@ -10,7 +10,7 @@ use crate::{
     error::RuntimeError,
     frontend::FeatureExtractor,
     model::FretNetRuntime,
-    profile::FrontendRunProfile,
+    profile::{FrontendRunProfile, OctavePyramidProfile},
     types::{FeatureBatch, ModelOutput},
 };
 
@@ -86,6 +86,12 @@ pub struct FrontendOctaveProfileSummary {
     pub frame_copy: ScalarProfileSummary,
     pub fft_execution: ScalarProfileSummary,
     pub dot_product: ScalarProfileSummary,
+    pub dot_loop_overhead: ScalarProfileSummary,
+    pub basis_lookup: ScalarProfileSummary,
+    pub multiply_accumulate: ScalarProfileSummary,
+    pub output_write: ScalarProfileSummary,
+    pub mean_active_basis_coefficients: f64,
+    pub mean_basis_coefficients_total: f64,
     pub array_materialization: ScalarProfileSummary,
     pub downsample: ScalarProfileSummary,
 }
@@ -112,11 +118,32 @@ pub struct FrontendProfileBenchmarkSummary {
     pub duration_seconds: f32,
     pub audio_prepare_seconds: f64,
     pub frontend_total: ScalarProfileSummary,
+    pub octave_pyramid: ScalarProfileSummary,
+    pub octave_pyramid_allocation_bytes: f64,
+    pub octave_pyramid_levels: Vec<FrontendOctavePyramidSummary>,
     pub hcqt_assembly: ScalarProfileSummary,
     pub batch_conversion: ScalarProfileSummary,
     pub hcqt_shape: [usize; 3],
     pub batch_shape: [usize; 5],
     pub harmonics: Vec<FrontendHarmonicProfileSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FrontendOctavePyramidSummary {
+    pub octave_index: usize,
+    pub hop_length: usize,
+    pub input_samples: usize,
+    pub output_samples: usize,
+    pub total: ScalarProfileSummary,
+    pub downsample: ScalarProfileSummary,
+    pub scale: ScalarProfileSummary,
+    pub output_allocation: ScalarProfileSummary,
+    pub kernel_prepare: ScalarProfileSummary,
+    pub convolution: ScalarProfileSummary,
+    pub resize: ScalarProfileSummary,
+    pub specialized_path: bool,
+    pub mean_left_tap_count: f64,
+    pub mean_right_tap_count: f64,
 }
 
 pub fn benchmark_runtime(
@@ -307,6 +334,19 @@ pub fn benchmark_frontend_profile_audio(
                 .map(|profile| profile.total_seconds)
                 .collect::<Vec<_>>(),
         ),
+        octave_pyramid: summarize_seconds(
+            &run_profiles
+                .iter()
+                .map(|profile| profile.octave_pyramid_seconds)
+                .collect::<Vec<_>>(),
+        ),
+        octave_pyramid_allocation_bytes: mean_usize(
+            &run_profiles
+                .iter()
+                .map(|profile| profile.octave_pyramid_allocation_bytes)
+                .collect::<Vec<_>>(),
+        ),
+        octave_pyramid_levels: summarize_octave_pyramid_levels(&run_profiles),
         hcqt_assembly: summarize_seconds(
             &run_profiles
                 .iter()
@@ -431,6 +471,42 @@ fn summarize_harmonics(run_profiles: &[FrontendRunProfile]) -> Vec<FrontendHarmo
                                 .map(|profile| profile.dot_product_seconds)
                                 .collect::<Vec<_>>(),
                         ),
+                        dot_loop_overhead: summarize_seconds(
+                            &octave_runs
+                                .iter()
+                                .map(|profile| profile.dot_loop_overhead_seconds)
+                                .collect::<Vec<_>>(),
+                        ),
+                        basis_lookup: summarize_seconds(
+                            &octave_runs
+                                .iter()
+                                .map(|profile| profile.basis_lookup_seconds)
+                                .collect::<Vec<_>>(),
+                        ),
+                        multiply_accumulate: summarize_seconds(
+                            &octave_runs
+                                .iter()
+                                .map(|profile| profile.multiply_accumulate_seconds)
+                                .collect::<Vec<_>>(),
+                        ),
+                        output_write: summarize_seconds(
+                            &octave_runs
+                                .iter()
+                                .map(|profile| profile.output_write_seconds)
+                                .collect::<Vec<_>>(),
+                        ),
+                        mean_active_basis_coefficients: mean_usize(
+                            &octave_runs
+                                .iter()
+                                .map(|profile| profile.active_basis_coefficients)
+                                .collect::<Vec<_>>(),
+                        ),
+                        mean_basis_coefficients_total: mean_usize(
+                            &octave_runs
+                                .iter()
+                                .map(|profile| profile.basis_coefficients_total)
+                                .collect::<Vec<_>>(),
+                        ),
                         array_materialization: summarize_seconds(
                             &octave_runs
                                 .iter()
@@ -492,6 +568,85 @@ fn summarize_harmonics(run_profiles: &[FrontendRunProfile]) -> Vec<FrontendHarmo
                         .collect::<Vec<_>>(),
                 ),
                 octaves,
+            }
+        })
+        .collect()
+}
+
+fn summarize_octave_pyramid_levels(
+    run_profiles: &[FrontendRunProfile],
+) -> Vec<FrontendOctavePyramidSummary> {
+    let Some(first) = run_profiles.first() else {
+        return Vec::new();
+    };
+
+    (0..first.octave_pyramid_profiles.len())
+        .map(|octave_index| {
+            let octave_runs: Vec<&OctavePyramidProfile> = run_profiles
+                .iter()
+                .map(|profile| &profile.octave_pyramid_profiles[octave_index])
+                .collect();
+            let first_octave = octave_runs[0];
+            FrontendOctavePyramidSummary {
+                octave_index: first_octave.octave_index,
+                hop_length: first_octave.hop_length,
+                input_samples: first_octave.input_samples,
+                output_samples: first_octave.output_samples,
+                total: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.total_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                downsample: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.downsample_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                scale: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.scale_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                output_allocation: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.output_allocation_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                kernel_prepare: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.kernel_prepare_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                convolution: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.convolution_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                resize: summarize_seconds(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.resize_seconds)
+                        .collect::<Vec<_>>(),
+                ),
+                specialized_path: first_octave.specialized_path,
+                mean_left_tap_count: mean_usize(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.left_tap_count)
+                        .collect::<Vec<_>>(),
+                ),
+                mean_right_tap_count: mean_usize(
+                    &octave_runs
+                        .iter()
+                        .map(|profile| profile.right_tap_count)
+                        .collect::<Vec<_>>(),
+                ),
             }
         })
         .collect()
