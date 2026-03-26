@@ -9,6 +9,7 @@ pub mod inference;
 pub mod model;
 pub mod postprocess;
 pub mod profile;
+pub mod streaming;
 pub mod types;
 
 pub use crate::{
@@ -39,6 +40,13 @@ pub use crate::{
     profile::{
         FrontendInitProfile, FrontendRunProfile, HarmonicInitProfile, HarmonicRunProfile,
         OctaveInitProfile, OctavePyramidProfile, OctaveRunProfile,
+    },
+    streaming::{
+        benchmark_streaming_audio, CallbackStats, DeadlineStats, DistributionStats,
+        IncrementalStreamingPreset, IncrementalStreamingPresetConfig, InferenceScheduling,
+        StreamingBenchmarkConfig, StreamingBenchmarkResult, StreamingFrontendMode,
+        StreamingStageBreakdown, StreamingTimingMode, BALANCED_INCREMENTAL_PRESET,
+        PRODUCTION_SAFE_INCREMENTAL_PRESET, STREAMING_INPUT_SAMPLE_RATE,
     },
     types::{
         DecodedOutput, FeatureBatch, FrontendStageOutputs, HarmonicStageOutput, HcqtFeatures,

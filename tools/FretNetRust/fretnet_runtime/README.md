@@ -230,6 +230,134 @@ It reports one-time model load cost separately, then per-input timings for:
 - stage D: ONNX inference
 - stage E: total pipeline time from WAV input to model outputs
 
+Run the streaming/realtime benchmark harness (primary performance benchmark for deployment decisions):
+
+```bash
+cargo run --release --example benchmark_streaming -- --audio-path ../../../input/guitarset/audio/00_BN1-129-Eb_comp_mic.wav --callback-sizes 128,256,512,1024
+```
+
+Useful options:
+
+```bash
+cargo run --release --example benchmark_streaming -- \
+  --audio-path ../../../input/guitarset/audio/00_BN1-129-Eb_comp_mic.wav \
+  --audio-path ../../../input/guitarset/audio/00_Jazz1-130-D_comp_mic.wav \
+  --callback-sizes 128,256,512,1024 \
+  --mode virtual \
+  --frontend-mode legacy,incremental \
+  --analysis-window-seconds 3.0 \
+  --incremental-context-seconds 1.0 \
+  --incremental-inference-hops 1 \
+  --iterations 1 \
+  --output-json output/streaming_benchmark_compare.json
+```
+
+The streaming harness models callback-style microphone ingestion at 44.1 kHz and reports:
+
+- callback budget vs processing time (`mean`, `p95`, `p99`, `max`)
+- deadline misses and backlog growth (`miss_count`, `miss_rate`, `mean/max backlog`)
+- decision latency (`input arrival -> output availability`) under the selected scheduling model
+- stage timing split (`audio_prep`, `frontend`, `inference`, `other`) and dominant stage
+- side-by-side legacy vs incremental comparison for matching input/callback/timing configurations
+- per-configuration GO/BORDERLINE/NO-GO conclusion
+
+Frontend modes:
+
+- `legacy`: callback-driven rolling-window recompute (previous behavior)
+- `incremental`: first streaming-native prototype with persistent callback-to-frontend downsampling state, persistent frontend ring buffer, and hop-based inference trigger
+
+Scheduling model:
+
+- default: hop cadence (inference is triggered when enough 44.1 kHz callback samples have arrived for one frontend hop)
+- optional: `--inference-every N` to force inference every `N` callbacks
+- incremental prototype uses `--incremental-inference-hops N` (run inference every `N` completed frontend hops)
+
+Frozen incremental presets:
+
+- `production-safe`: `callback=1024`, `incremental_context_seconds=0.5`, `incremental_inference_hops=1`
+- `balanced`: `callback=1024`, `incremental_context_seconds=0.5`, `incremental_inference_hops=2`
+
+Run the frozen production-safe preset directly:
+
+```bash
+cargo run --release --example benchmark_streaming -- \
+  --frontend-mode incremental \
+  --mode virtual,sleep \
+  --preset production-safe
+```
+
+Run the frozen balanced preset directly:
+
+```bash
+cargo run --release --example benchmark_streaming -- \
+  --frontend-mode incremental \
+  --mode virtual,sleep \
+  --preset balanced
+```
+
+Incrementality note:
+
+- incremental mode removes rolling-window audio prep recomputation by maintaining persistent streaming state
+- HCQT extraction is still recomputed at inference time within a bounded incremental context window (not yet a fully minimal incremental HCQT engine)
+
+Use this streaming benchmark as the main criterion for further optimization work. Offline full-file latency is still useful for diagnostics, but it is no longer the primary go/no-go metric for realtime use.
+
+Run the incremental parameter-sweep harness (operating-envelope mapping before further architectural work):
+
+```bash
+cargo run --release --example sweep_streaming -- \
+  --callback-sizes 128,256,512,1024 \
+  --context-seconds 0.5,0.75,1.0,1.25,1.5 \
+  --inference-hops 1,2,4,8 \
+  --mode virtual \
+  --sleep-validate-top-k 6 \
+  --output-json output/streaming_sweep.json \
+  --output-csv output/streaming_sweep.csv
+```
+
+Run only the frozen presets (recommended quick regression check):
+
+```bash
+cargo run --release --example sweep_streaming -- \
+  --preset production-safe,balanced \
+  --mode virtual \
+  --sleep-validate-top-k 2 \
+  --output-json output/streaming_sweep_presets.json \
+  --output-csv output/streaming_sweep_presets.csv
+```
+
+When `--preset` is provided, the sweep uses the frozen callback/context/hops values from the preset definitions.
+
+This sweep always benchmarks the incremental frontend mode and reports, for each configuration:
+
+- callback/deadline/backlog/decision-latency/trigger-latency metrics
+- stage timing split (`audio_prep`, `frontend`, `inference`, `other`)
+- practical realtime class: `GO`, `BORDERLINE`, `NO-GO`
+- a ranking score (lower is better) for top/worst configuration summaries
+
+Default sweep dimensions:
+
+- callback size: `128,256,512,1024`
+- incremental context window seconds: `0.5,0.75,1.0,1.25,1.5`
+- incremental inference hops: `1,2,4,8`
+
+Realtime classification rule (explicit):
+
+- `GO`: `miss_rate <= 1%`, `callback_p95 <= 85%` of callback budget, `max_backlog <= 1x` callback budget, `decision_p95 <= 120 ms`
+- `BORDERLINE`: `miss_rate <= 10%`, `callback_p95 <= 120%` of callback budget, `max_backlog <= 4x` callback budget, `decision_p95 <= 350 ms`
+- `NO-GO`: any configuration outside the above limits
+
+Ranking score (explicit):
+
+- `score = 500*miss_rate + 0.35*callback_p95_ms + 0.05*decision_p95_ms + 0.03*max_backlog_ms`
+
+Recommended two-stage workflow:
+
+1. Stage 1 (fast search): run broad sweep in `--mode virtual`.
+2. Stage 2 (wall-clock sanity): validate only top candidates with `--sleep-validate-top-k N` (or run explicit `--mode sleep`).
+
+Use this workflow to identify the best practical operating region (especially around callback `1024` and tuned `512`) before deciding whether another major realtime architecture pass is justified.
+
 Run the detailed frontend profiler on the default real-audio set:
 
 ```bash
