@@ -13,7 +13,9 @@ use crate::{
     error::RuntimeError,
     inference::run_raw_session,
     postprocess::decode_conservatively,
-    types::{DecodedOutput, FeatureBatch, ModelMetadata, ModelOutput, NamedTensorOutput, TensorMetadata},
+    types::{
+        DecodedOutput, FeatureBatch, ModelMetadata, ModelOutput, NamedTensorOutput, TensorMetadata,
+    },
 };
 
 pub struct FretNetRuntime {
@@ -79,12 +81,13 @@ impl FretNetRuntime {
 
         for (index, meta) in self.metadata.outputs.iter().enumerate() {
             let value = &outputs[index];
-            let extracted = value
-                .try_extract_array::<f32>()
-                .map_err(|err| RuntimeError::OutputExtraction {
-                    name: meta.name.clone(),
-                    message: err.to_string(),
-                })?;
+            let extracted =
+                value
+                    .try_extract_array::<f32>()
+                    .map_err(|err| RuntimeError::OutputExtraction {
+                        name: meta.name.clone(),
+                        message: err.to_string(),
+                    })?;
 
             tensors.push(NamedTensorOutput {
                 name: meta.name.clone(),
@@ -108,7 +111,10 @@ impl FretNetRuntime {
     }
 
     pub fn output_name_fallbacks(&self) -> Vec<String> {
-        DEFAULT_OUTPUT_NAMES.iter().map(|name| (*name).to_owned()).collect()
+        DEFAULT_OUTPUT_NAMES
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect()
     }
 }
 

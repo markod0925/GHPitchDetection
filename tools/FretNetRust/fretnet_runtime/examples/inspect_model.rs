@@ -14,12 +14,18 @@ fn main() -> anyhow::Result<()> {
 
     println!("Inputs:");
     for input in &runtime.metadata().inputs {
-        println!("  {} | {} | {:?}", input.name, input.element_type, input.dimensions);
+        println!(
+            "  {} | {} | {:?}",
+            input.name, input.element_type, input.dimensions
+        );
     }
 
     println!("Outputs:");
     for output in &runtime.metadata().outputs {
-        println!("  {} | {} | {:?}", output.name, output.element_type, output.dimensions);
+        println!(
+            "  {} | {} | {:?}",
+            output.name, output.element_type, output.dimensions
+        );
     }
 
     Ok(())
@@ -28,4 +34,3 @@ fn main() -> anyhow::Result<()> {
 fn args() -> Args {
     Args::parse()
 }
-

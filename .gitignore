@@ -18,3 +18,7 @@ target/
 /input
 output/debug_phase1/tuning/stage_a_trials.csv
 output/debug_phase1/tuning/stage_a_trials.json
+tools/FretNetRust/guitar-transcription-continuous
+/tools/FretNetRust/fretnet_runtime/output
+/tools/FretNetRust/fretnet_runtime/tools/__pycache__
+/tools/FretNetRust/fretnet_runtime/assets

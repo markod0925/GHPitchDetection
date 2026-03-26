@@ -2,8 +2,8 @@ use std::{path::Path, time::Instant};
 
 use clap::Parser;
 use fretnet_runtime::{
-    benchmark_runtime, default_fixture_paths, default_model_path, load_regression_fixture, FeatureBatch,
-    FretNetRuntime,
+    benchmark_runtime, default_fixture_paths, default_model_path, load_regression_fixture,
+    FeatureBatch, FretNetRuntime,
 };
 
 #[derive(Parser, Debug)]
@@ -62,7 +62,12 @@ fn main() -> anyhow::Result<()> {
         let fixture = load_regression_fixture(&fixture_path)?;
         let fixture_load_time = fixture_load_start.elapsed();
         let input_shape = fixture.features.shape();
-        let summary = benchmark_runtime(&mut runtime, &fixture.features, args.iterations, model_load_time)?;
+        let summary = benchmark_runtime(
+            &mut runtime,
+            &fixture.features,
+            args.iterations,
+            model_load_time,
+        )?;
 
         println!();
         println!("Fixture: {fixture_name}");
@@ -106,8 +111,14 @@ fn main() -> anyhow::Result<()> {
     println!();
     println!("Summary:");
     println!("  Fixtures benchmarked: {}", results.len());
-    println!("  Fastest by mean latency: {} ({:?})", fastest.fixture_name, fastest.summary.average_run);
-    println!("  Slowest by mean latency: {} ({:?})", slowest.fixture_name, slowest.summary.average_run);
+    println!(
+        "  Fastest by mean latency: {} ({:?})",
+        fastest.fixture_name, fastest.summary.average_run
+    );
+    println!(
+        "  Slowest by mean latency: {} ({:?})",
+        slowest.fixture_name, slowest.summary.average_run
+    );
     println!("  Global mean of per-fixture means: {:?}", global_mean);
     println!("  Global max observed latency: {:?}", global_max_latency);
 

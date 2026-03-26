@@ -49,4 +49,3 @@ pub fn decode_conservatively(output: &ModelOutput) -> Result<DecodedOutput, Runt
         ),
     })
 }
-

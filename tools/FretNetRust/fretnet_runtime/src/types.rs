@@ -1,4 +1,4 @@
-use ndarray::{Array3, Array5, ArrayD};
+use ndarray::{Array2, Array3, Array5, ArrayD};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +25,13 @@ impl FeatureBatch {
         Self { data }
     }
 
-    pub fn synthetic(batch: usize, frames: usize, channels: usize, freq_bins: usize, frame_width: usize) -> Self {
+    pub fn synthetic(
+        batch: usize,
+        frames: usize,
+        channels: usize,
+        freq_bins: usize,
+        frame_width: usize,
+    ) -> Self {
         let mut data = Array5::<f32>::zeros((batch, frames, channels, freq_bins, frame_width));
 
         for b in 0..batch {
@@ -115,6 +121,19 @@ pub struct HcqtFeatures {
     data: Array3<f32>,
     sample_rate: u32,
     hop_length: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct HarmonicStageOutput {
+    pub harmonic: f32,
+    pub magnitude: Array2<f32>,
+    pub post_processed: Array2<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrontendStageOutputs {
+    pub hcqt: HcqtFeatures,
+    pub harmonics: Vec<HarmonicStageOutput>,
 }
 
 impl HcqtFeatures {

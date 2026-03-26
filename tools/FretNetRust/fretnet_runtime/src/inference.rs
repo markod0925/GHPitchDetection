@@ -6,7 +6,10 @@ use crate::{
     types::{FeatureBatch, ModelMetadata},
 };
 
-pub fn validate_feature_batch(features: &FeatureBatch, metadata: &ModelMetadata) -> Result<(), RuntimeError> {
+pub fn validate_feature_batch(
+    features: &FeatureBatch,
+    metadata: &ModelMetadata,
+) -> Result<(), RuntimeError> {
     let shape = features.shape();
     let rank = shape.len();
     if rank != 5 {
@@ -65,5 +68,7 @@ pub fn run_raw_session<'a>(
         .map_err(|err| RuntimeError::Inference(err.to_string()))?;
 
     let inputs = inputs![input.name.as_str() => tensor];
-    session.run(inputs).map_err(|err| RuntimeError::Inference(err.to_string()))
+    session
+        .run(inputs)
+        .map_err(|err| RuntimeError::Inference(err.to_string()))
 }

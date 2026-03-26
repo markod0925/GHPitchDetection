@@ -25,6 +25,15 @@ pub enum FrontendError {
     #[error("invalid feature fixture '{path}': {message}")]
     FeatureFixtureFormat { path: PathBuf, message: String },
 
+    #[error("stage fixture path does not exist: {0}")]
+    MissingStageFixture(PathBuf),
+
+    #[error("failed to read stage fixture '{path}': {message}")]
+    StageFixtureIo { path: PathBuf, message: String },
+
+    #[error("invalid stage fixture '{path}': {message}")]
+    StageFixtureFormat { path: PathBuf, message: String },
+
     #[error("frontend configuration mismatch: {0}")]
     ConfigMismatch(String),
 
@@ -69,22 +78,13 @@ pub enum RuntimeError {
     Inference(String),
 
     #[error("failed to extract output tensor '{name}': {message}")]
-    OutputExtraction {
-        name: String,
-        message: String,
-    },
+    OutputExtraction { name: String, message: String },
 
     #[error("failed to read fixture '{path}': {message}")]
-    FixtureIo {
-        path: PathBuf,
-        message: String,
-    },
+    FixtureIo { path: PathBuf, message: String },
 
     #[error("invalid fixture '{path}': {message}")]
-    FixtureFormat {
-        path: PathBuf,
-        message: String,
-    },
+    FixtureFormat { path: PathBuf, message: String },
 
     #[error("decoding failed: {0}")]
     Decode(String),

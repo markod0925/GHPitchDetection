@@ -1,10 +1,15 @@
-use fretnet_runtime::{default_fixture_paths, default_model_path, load_regression_fixture, FretNetRuntime};
+use fretnet_runtime::{
+    default_fixture_paths, default_model_path, load_regression_fixture, FretNetRuntime,
+};
 
 #[test]
 fn regression_matches_real_audio_reference_fixture() {
     let model_path = default_model_path();
     if !model_path.exists() {
-        eprintln!("skipping regression test because model is missing at {}", model_path.display());
+        eprintln!(
+            "skipping regression test because model is missing at {}",
+            model_path.display()
+        );
         return;
     }
 
@@ -35,10 +40,18 @@ fn regression_matches_real_audio_reference_fixture() {
             .iter()
             .map(|tensor| tensor.name.clone())
             .collect();
-        let runtime_names: Vec<_> = output.tensors.iter().map(|tensor| tensor.name.clone()).collect();
+        let runtime_names: Vec<_> = output
+            .tensors
+            .iter()
+            .map(|tensor| tensor.name.clone())
+            .collect();
         let shared_names: Vec<_> = reference_names
             .iter()
-            .filter(|name| runtime_names.iter().any(|runtime_name| runtime_name == *name))
+            .filter(|name| {
+                runtime_names
+                    .iter()
+                    .any(|runtime_name| runtime_name == *name)
+            })
             .cloned()
             .collect();
 
@@ -50,16 +63,14 @@ fn regression_matches_real_audio_reference_fixture() {
         println!("  Shared tensors:    {:?}", shared_names);
 
         for reference in &fixture.reference_output.tensors {
-            let actual = output
-                .tensor(&reference.name)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "missing output '{}' in fixture '{}' (path: {})",
-                        reference.name,
-                        fixture_name,
-                        fixture_path.display()
-                    )
-                });
+            let actual = output.tensor(&reference.name).unwrap_or_else(|| {
+                panic!(
+                    "missing output '{}' in fixture '{}' (path: {})",
+                    reference.name,
+                    fixture_name,
+                    fixture_path.display()
+                )
+            });
 
             assert_eq!(
                 actual.data.shape(),

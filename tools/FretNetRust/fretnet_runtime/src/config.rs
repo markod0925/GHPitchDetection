@@ -42,3 +42,11 @@ pub fn default_feature_fixture_paths() -> Vec<PathBuf> {
         root.join("00_Jazz1-130-D_comp_mic_features_f130.npz"),
     ]
 }
+
+pub fn default_stage_fixture_paths() -> Vec<PathBuf> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/test_features_python_stages");
+    vec![
+        root.join("00_BN1-129-Eb_comp_mic"),
+        root.join("00_Jazz1-130-D_comp_mic"),
+    ]
+}

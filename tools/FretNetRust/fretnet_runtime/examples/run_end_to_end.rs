@@ -1,5 +1,7 @@
 use clap::Parser;
-use fretnet_runtime::{default_model_path, load_audio_for_frontend, FeatureExtractor, FrontendConfig, FretNetRuntime};
+use fretnet_runtime::{
+    default_model_path, load_audio_for_frontend, FeatureExtractor, FretNetRuntime, FrontendConfig,
+};
 
 #[derive(Parser, Debug)]
 struct Args {
