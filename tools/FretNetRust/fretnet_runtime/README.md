@@ -1,6 +1,6 @@
 # FretNet ONNX Runtime (Rust)
 
-Inference-focused Rust runtime for the exported FretNet ONNX model used by GuitarHelio.
+Inference-focused Rust runtime for the exported FretNet (https://github.com/cwitkowitz/guitar-transcription-continuous) ONNX model used by GuitarHelio.
 
 ## Core Facts
 
