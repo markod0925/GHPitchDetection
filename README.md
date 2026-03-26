@@ -13,7 +13,7 @@ This repository contains three pitch/fret detection approaches for guitar audio.
 - Goal: score-informed validation of expected notes/chords (not open-ended transcription), intended for GuitarHelio gameplay validation.
 
 ## 3) FretNet Rust Runtime (`tools/FretNetRust/fretnet_runtime`)
-- Rust runtime/front-end for exported FretNet neural model (ONNX inference path).
+- Rust runtime/front-end for exported FretNet (see https://github.com/cwitkowitz/guitar-transcription-continuous) neural model (ONNX inference path).
 - Goal: general neural pitch/fret transcription path for GuitarHelio (practice-oriented usage).
 - Current Rust post-processing is intentionally conservative; annotation benchmarks still evaluate the path against GuitarSet.
 - Includes a streaming/realtime benchmark harness (`benchmark_streaming`) for callback/deadline/backlog/latency evaluation at microphone-like 44.1 kHz ingestion, with `legacy` vs `incremental` frontend-mode comparison; use this as the primary performance benchmark for real-time viability decisions.
