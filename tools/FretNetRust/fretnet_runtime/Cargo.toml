@@ -5,6 +5,11 @@ edition = "2021"
 license = "MIT"
 description = "Inference-only ONNX Runtime wrapper for FretNet HCQT feature inference."
 
+[features]
+default = ["ort-desktop"]
+ort-desktop = ["ort/download-binaries", "ort/copy-dylibs", "ort/tls-rustls"]
+ort-android = ["ort/load-dynamic"]
+
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
@@ -12,7 +17,7 @@ hound = "3.5"
 ndarray = { version = "0.17", features = ["serde"] }
 ndarray-npy = "0.10"
 num-complex = "0.4"
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "download-binaries", "copy-dylibs", "api-24", "tls-rustls"] }
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["std", "ndarray", "api-24"] }
 rustfft = "6.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

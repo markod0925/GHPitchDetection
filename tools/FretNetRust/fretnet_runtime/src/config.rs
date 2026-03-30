@@ -14,7 +14,7 @@ pub const FRONTEND_SPARSITY: f32 = 0.01;
 
 pub fn default_model_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../guitar-transcription-continuous/output/export/model.onnx")
+        .join("../model/model.onnx")
 }
 
 pub fn default_fixture_path() -> PathBuf {

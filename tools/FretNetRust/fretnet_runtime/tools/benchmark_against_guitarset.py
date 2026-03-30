@@ -33,7 +33,7 @@ from run_python_reference import load_model, run_reference, save_result  # noqa:
 
 
 DEFAULT_OUTPUT_DIR = THIS_DIR.parent / "output" / "annotation_eval"
-DEFAULT_ONNX_PATH = THIS_DIR.parent / "../guitar-transcription-continuous/output/export/model.onnx"
+DEFAULT_ONNX_PATH = THIS_DIR.parent / "../model/model.onnx"
 DEFAULT_RUST_BATCH_BINARY = THIS_DIR.parent / "target" / "release" / "examples" / (
     "run_end_to_end_batch_dump.exe" if sys.platform.startswith("win") else "run_end_to_end_batch_dump"
 )

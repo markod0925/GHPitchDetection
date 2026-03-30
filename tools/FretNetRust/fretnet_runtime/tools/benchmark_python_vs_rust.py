@@ -37,7 +37,7 @@ DEFAULT_OUTPUT_DIR = RUST_CRATE_ROOT / "output" / "python_vs_rust_consistency"
 DEFAULT_RUST_BINARY = RUST_CRATE_ROOT / "target" / "release" / "examples" / (
     "run_end_to_end_dump.exe" if sys.platform.startswith("win") else "run_end_to_end_dump"
 )
-DEFAULT_ONNX_PATH = RUST_CRATE_ROOT / "../guitar-transcription-continuous/output/export/model.onnx"
+DEFAULT_ONNX_PATH = RUST_CRATE_ROOT / "../model/model.onnx"
 
 
 @dataclass

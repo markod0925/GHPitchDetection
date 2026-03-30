@@ -42,7 +42,7 @@ Inference-focused Rust runtime for the exported FretNet (https://github.com/cwit
 Default ONNX path (relative to this crate):
 
 ```text
-../guitar-transcription-continuous/output/export/model.onnx
+../model/model.onnx
 ```
 
 ## Key Commands (Release Only)
