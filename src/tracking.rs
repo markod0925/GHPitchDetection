@@ -185,7 +185,10 @@ fn normalize_tablature_events(events: &mut [TablatureNoteEvent]) -> Result<()> {
 
 fn validate_tablature_event(event: &TablatureNoteEvent) -> Result<()> {
     if event.string >= STRING_COUNT {
-        bail!("tablature string index must be in 0..6 (got {})", event.string);
+        bail!(
+            "tablature string index must be in 0..6 (got {})",
+            event.string
+        );
     }
     if !event.onset_sec.is_finite() || !event.offset_sec.is_finite() {
         bail!("tablature onset/offset must be finite");

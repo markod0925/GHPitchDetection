@@ -380,12 +380,8 @@ pub fn pretrain_from_guitarset(
     let mut tuned_cfg = cfg.clone();
     tuned_cfg.masp.b_exponent = tuned.b_exponent;
 
-    let (note_signatures, joint_signatures) = build_signatures_from_guitarset(
-        &tuned_cfg,
-        mono_dataset,
-        comp_dataset,
-        &mut audio_cache,
-    )?;
+    let (note_signatures, joint_signatures) =
+        build_signatures_from_guitarset(&tuned_cfg, mono_dataset, comp_dataset, &mut audio_cache)?;
 
     let mut manifest = build_manifest(&tuned_cfg);
     manifest.validation_rule.score_weights = tuned.weights;
